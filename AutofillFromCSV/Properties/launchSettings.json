@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "BusWankersSharp": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\hugh\\source\\repos\\BusWankersSharp\\BusWankersSharp\\Glasto 2024 v0.3.csv\" h:\\BusWankersAutofill\\bw_autofill.txt"
+    }
+  }
+}
