@@ -1,0 +1,28 @@
+body {
+    background-color: #f2f2f2;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+.container {
+    display: flex;
+    justify-content: center; /* Center children horizontally */
+    align-items: center; /* Center children vertically */
+    min-height: 100vh; /* At least the height of the viewport */
+    padding: 10px;
+    flex-direction: column; /* Stack children vertically */
+}
+
+.image-with-shadow {
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+    margin: 0 auto; /* Center the image block within its container */
+    display: block; /* This makes margin auto work for centering */
+}
+
+h1, h2, p, a {
+    text-align: center; /* Center the text inside elements */
+    padding: 10px; /* Add padding to inset the paragraphs and headings */
+    margin: 0 auto; /* Center the block itself if it's not inside a flex container */
+}
+
