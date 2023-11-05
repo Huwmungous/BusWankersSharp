@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CSVFromSpreadsheet": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\hugh\\source\\repos\\BusWankersSharp\\CSVFromSpreadsheet\\Glasto 2024 Sample.xlsx\" H:\\AutoFillTexts "
+    }
+  }
+}
