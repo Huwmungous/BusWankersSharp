@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "NXvgJGBTjk8O3E9qlCquEbRHBA/Ii4XWJRN4eCg1FGqXbBLfIf04ZV9xz7ew29W6+xdbY3LR6LqVM6OGTJe2eA==",
+  "success": true,
+  "projectFilePath": "D:\\repos\\BusWankersSharp\\CSVFromSpreadsheet\\CSVFromSpreadsheet.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\hugh\\.nuget\\packages\\exceldatareader\\3.6.0\\exceldatareader.3.6.0.nupkg.sha512",
+    "C:\\Users\\hugh\\.nuget\\packages\\exceldatareader.dataset\\3.6.0\\exceldatareader.dataset.3.6.0.nupkg.sha512"
+  ],
+  "logs": []
+}

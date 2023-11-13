@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\UploaderService.props" />
+</Project>
