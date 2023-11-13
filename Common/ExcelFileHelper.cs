@@ -1,12 +1,9 @@
 ﻿using ExcelDataReader;
-using System.Collections.Generic;
-using System.Data;
-using System.IO;
 using System.Text;
 
-namespace Autofills.CSVFromSpreadsheet
+namespace Autofills.Common
 {
-    internal class ExcelFileHelper
+    public class ExcelFileHelper
     {
         public static bool SaveAsCsv(string excelFilePath, string destinationCsvFilePath)
         {

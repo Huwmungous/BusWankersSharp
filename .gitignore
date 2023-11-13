@@ -3,3 +3,12 @@
 .vs
 *\bin
 *\obj 
+/.vs/BusWankersSharp/DesignTimeBuild/.dtbcache.v2
+/.vs/BusWankersSharp/FileContentIndex/4109e6dd-bde2-4875-aa5c-8ab1ad6b97c5.vsidx
+/.vs/BusWankersSharp/FileContentIndex/5664dd8c-b84b-4135-a038-7371b4a3e70c.vsidx
+/.vs/BusWankersSharp/FileContentIndex/9baf0445-c3f0-4788-a095-f7c0f4aad1eb.vsidx
+/.vs/BusWankersSharp/FileContentIndex/4e1f8f44-16fc-41d0-8d56-ff382063236c.vsidx
+/.vs/BusWankersSharp/FileContentIndex/f1432445-91f8-4d38-a838-c5cf3120406c.vsidx
+/.vs/BusWankersSharp/v17/.suo
+/CSVFromSpreadsheet/obj/Debug/net7.0/ref/CSVFromSpreadsheet.dll
+/CSVFromSpreadsheet/obj/Debug/net7.0/refint/CSVFromSpreadsheet.dll
