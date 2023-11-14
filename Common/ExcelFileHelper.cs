@@ -32,7 +32,7 @@ namespace Autofills.Common
                     }
                 });
 
-                for (int j= 0; j < 3; j++)
+                for (int j = 0; j < 3; j++)
                 {
                     var sheet = ds.Tables[j];
 
@@ -48,7 +48,7 @@ namespace Autofills.Common
                         row_no++;
                         csvContent += string.Join(",", arr) + "\r\n";
                     }
-                    StreamWriter csv = new StreamWriter($"{destinationCsvFilePath}\\{sheet.TableName}.csv", false);
+                    StreamWriter csv = new StreamWriter($"{destinationCsvFilePath}{Path.DirectorySeparatorChar}{sheet.TableName.Replace(" ", string.Empty)}.csv", false);
                     csv.Write(csvContent);
                     csv.Close();
                 }
