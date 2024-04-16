@@ -8,7 +8,7 @@ namespace Autofills.Common
 {
     public class BusWankers
     {
-        const int MAX_IN_A_GROUP = 6;
+        public const int DEFAULT_MAX_IN_A_GROUP = 6;
         const int SIGNIFICANT_COLUMNS = 6; // interested only in first 3 columns Group letter, registration and postcode
 
         private string inputFileName;
@@ -19,6 +19,8 @@ namespace Autofills.Common
             inputFileName = inputFile;
             outputFileName = outputFile;
         }
+
+        public int MaxInAGroup { get; set; }
 
         public List<List<string>> ReadCsv()
         {
@@ -111,7 +113,7 @@ namespace Autofills.Common
         private void PadGroup(StreamWriter writer, ref int groupCount, ref int rowCount, string groupCode)
         {
             // end-fills a group with blank entries
-            while (groupCount < MAX_IN_A_GROUP)
+            while (groupCount < MaxInAGroup)
             {
                 writer.WriteLine($"r{rowCount},0,\"registrations_{groupCount}__RegistrationId\",\"\",\"\",1,{groupCode}");
                 writer.WriteLine($"r{rowCount},0,\"registrations_{groupCount}__Postcode\",\"\",\"\",1,{groupCode}");
@@ -159,10 +161,12 @@ namespace Autofills.Common
             WriteFooter();
         }
 
-        public static void GenerateAutofillText(string inputFile, string outputFile)
+        public static void GenerateAutofillText(string inputFile, string outputFile, int maxInAGroup)
         {
             // Instantiate the BusWankers class and process the input file
             BusWankers bw = new(inputFile, outputFile);
+
+            bw.MaxInAGroup = maxInAGroup;
 
             List<List<string>> data = bw.ReadCsv();
 

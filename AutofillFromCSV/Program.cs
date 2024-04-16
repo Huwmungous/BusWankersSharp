@@ -12,8 +12,10 @@ namespace Autofills.AutofillFromCSV
 
             string outputFile = args.Length > 1 ? args[1] : @"h:\Autofills\autofill.txt";
 
-            if(BusWankers.CheckPaths(inputFile, outputFile))
-                BusWankers.GenerateAutofillText(inputFile, outputFile);
+            int maxInAGroup = args.Length > 2 ? int.Parse(args[2]) : BusWankers.DEFAULT_MAX_IN_A_GROUP;
+
+            if (BusWankers.CheckPaths(inputFile, outputFile))
+                BusWankers.GenerateAutofillText(inputFile, outputFile, maxInAGroup);
         }
     }
 }
