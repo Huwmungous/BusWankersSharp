@@ -24,22 +24,29 @@ namespace Autofills.Common
 
         public List<List<string>> ReadCsv()
         {
-            List<List<string>> records = new();
 
-            // Read CSV into a list of lists
-            using (StreamReader reader = new(inputFileName))
+                List<List<string>> records = new();
+            try
             {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    List<string> row = line.Split(',')
-                                           .Select(s => s.Trim())
-                                           .Take(SIGNIFICANT_COLUMNS)
-                                           .ToList();
-                    records.Add(row);
-                }
-            }
 
+                // Read CSV into a list of lists
+                using (StreamReader reader = new(inputFileName))
+                {
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        List<string> row = line.Split(',')
+                                               .Select(s => s.Trim())
+                                               .Take(SIGNIFICANT_COLUMNS)
+                                               .ToList();
+                        records.Add(row);
+                    }
+                }  
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
             return TidyData(records);
         }
 

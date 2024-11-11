@@ -2,7 +2,7 @@
   "profiles": {
     "CSVFromSpreadsheet": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\hugh\\Downloads\\Glasto 2024 Resale v0.1.xlsx\" H:\\AutoFillTexts 4 "
+      "commandLineArgs": "\"C:\\Users\\hugh\\Downloads\\Glasto 2025.xlsx\" H:\\AutoFillTexts 6 "
     }
   }
 }

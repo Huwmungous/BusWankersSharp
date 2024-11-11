@@ -1,0 +1,27 @@
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\AutofillFromCSV.deps.json
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\AutofillFromCSV.runtimeconfig.json
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\AutofillFromCSV.exe
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\CSVFromSpreadsheet.exe
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\Glasto 2024 Sample.xlsx
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\CSVFromSpreadsheet.deps.json
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\CSVFromSpreadsheet.runtimeconfig.json
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\CSVFromSpreadsheet.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\CSVFromSpreadsheet.pdb
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\ExcelDataReader.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\ExcelDataReader.DataSet.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\AutofillFromCSV.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\Common.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\AutofillFromCSV.pdb
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\bin\Debug\net8.0\Common.pdb
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.csproj.AssemblyReference.cache
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.GeneratedMSBuildEditorConfig.editorconfig
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.AssemblyInfoInputs.cache
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.AssemblyInfo.cs
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.csproj.CoreCompileInputs.cache
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.sourcelink.json
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromS.92AA5622.Up2Date
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\refint\CSVFromSpreadsheet.dll
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.pdb
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\CSVFromSpreadsheet.genruntimeconfig.cache
+D:\repos\BusWankersSharp\CSVFromSpreadsheet\obj\Debug\net8.0\ref\CSVFromSpreadsheet.dll
