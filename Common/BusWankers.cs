@@ -53,7 +53,7 @@ namespace Autofills.Common
         private List<List<string>> TidyData(List<List<string>> data)
         {
             // strip off the row zero column headers
-            data.RemoveAt(0);
+             data.RemoveAt(0);
 
             // Remove any empty lines
             return data.Where(row => !row.All(string.IsNullOrEmpty)).ToList();

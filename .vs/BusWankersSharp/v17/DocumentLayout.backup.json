@@ -11,12 +11,12 @@
       "RelativeMoniker": "D:0:0:{A79D545F-FC68-4EF5-82D7-B4291D7E228C}|AutofillFromCSV\\AutofillFromCSV.csproj|solutionrelative:autofillfromcsv\\autofillfromcsv.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{40BCE634-99C8-4DC1-9A96-7DB3C8C67841}|Common\\Common.csproj|d:\\repos\\buswankerssharp\\common\\buswankers.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{40BCE634-99C8-4DC1-9A96-7DB3C8C67841}|Common\\Common.csproj|solutionrelative:common\\buswankers.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{78C3E2FC-E0D1-4B79-86F0-41AF4DC405AA}|CSVFromSpreadsheet\\CSVFromSpreadsheet.csproj|d:\\repos\\buswankerssharp\\csvfromspreadsheet\\csvfromspreadsheet.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
       "RelativeMoniker": "D:0:0:{78C3E2FC-E0D1-4B79-86F0-41AF4DC405AA}|CSVFromSpreadsheet\\CSVFromSpreadsheet.csproj|solutionrelative:csvfromspreadsheet\\csvfromspreadsheet.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{40BCE634-99C8-4DC1-9A96-7DB3C8C67841}|Common\\Common.csproj|d:\\repos\\buswankerssharp\\common\\buswankers.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{40BCE634-99C8-4DC1-9A96-7DB3C8C67841}|Common\\Common.csproj|solutionrelative:common\\buswankers.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A79D545F-FC68-4EF5-82D7-B4291D7E228C}|AutofillFromCSV\\AutofillFromCSV.csproj|d:\\repos\\buswankerssharp\\autofillfromcsv\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -50,7 +50,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 2,
               "Title": "CSVFromSpreadsheet",
               "DocumentMoniker": "D:\\repos\\BusWankersSharp\\CSVFromSpreadsheet\\CSVFromSpreadsheet.csproj",
               "RelativeDocumentMoniker": "CSVFromSpreadsheet\\CSVFromSpreadsheet.csproj",
@@ -62,13 +62,13 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "BusWankers.cs",
               "DocumentMoniker": "D:\\repos\\BusWankersSharp\\Common\\BusWankers.cs",
               "RelativeDocumentMoniker": "Common\\BusWankers.cs",
               "ToolTip": "D:\\repos\\BusWankersSharp\\Common\\BusWankers.cs*",
               "RelativeToolTip": "Common\\BusWankers.cs*",
-              "ViewState": "AgIAACwAAAAAAAAAAAAAADcAAAAMAAAAAAAAAA==",
+              "ViewState": "AgIAACwAAAAAAAAAAAAAADcAAAANAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2024-11-11T11:10:42.621Z",
               "EditorCaption": ""
