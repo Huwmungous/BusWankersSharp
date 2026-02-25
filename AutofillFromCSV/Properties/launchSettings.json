@@ -2,7 +2,7 @@
   "profiles": {
     "BusWankersSharp": {
       "commandName": "Project",
-      "commandLineArgs": "\"H:\\AutoFillTexts\\Coach.csv\" H:\\AutoFillTexts\\bw_autofill.csv"
+      "commandLineArgs": "\"H:\\AutoFillTexts\\General.csv\" H:\\AutoFillTexts\\g_autofill.csv"
     }
   }
 }

@@ -41,7 +41,8 @@ namespace Autofills.Common
                                                .ToList();
                         records.Add(row);
                     }
-                }  
+                } 
+                
             }
             catch (Exception ex)
             {
@@ -52,6 +53,9 @@ namespace Autofills.Common
 
         private List<List<string>> TidyData(List<List<string>> data)
         {
+            if(data.Count == 0)
+                return data;
+
             // strip off the row zero column headers
             data.RemoveAt(0);
 
