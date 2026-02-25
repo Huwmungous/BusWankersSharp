@@ -6,3 +6,5 @@
 /.vs
 /Common/bin
 /Common/obj
+/AutofillFromCSV/bin
+/AutofillFromCSV/obj
