@@ -7,8 +7,17 @@ const BusWankersPage = () => {
   return (
     <div className="bus-wankers-page">
       <div className="container">
-        <h1>This is the 2025 Glastonbury General Sale Autofill File</h1>
+        <h1>This is the 2027 Glastonbury General Sale Autofill File</h1>
         <h2>Use this file to populate your Autofill Options</h2>
+
+        <div className="key-dates">
+          <h3>Key Dates for the 2027 General Sale</h3>
+          <ul>
+            <li>Registration deadline: 5:00pm BST, Friday 25th September 2026</li>
+            <li>Coach + ticket package sale: 6:00pm BST, Thursday 1st October 2026</li>
+            <li>General sale (standard tickets): 9:00am BST, Sunday 4th October 2026</li>
+          </ul>
+        </div>
 
         <div className="image-container">
           <img src={`${pub}/Hippies_1.png`} alt="ImportExport Image" className="image-with-shadow" />
@@ -54,7 +63,7 @@ const BusWankersPage = () => {
 
         <h4>
           You Can Test Your AutoFill on a mockup of the Glasto Registration Form by{' '}
-          <a href={`${pub}/test_page.html`}>clicking here</a>.
+          <a href={`${pub}/#/test`}>clicking here</a>.
         </h4>
 
         <h4>Becca Productions Inc.</h4>

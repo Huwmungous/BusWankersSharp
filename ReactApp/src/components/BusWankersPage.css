@@ -19,6 +19,31 @@
   text-align: center;
 }
 
+.key-dates {
+  max-width: 480px;
+  margin: 20px auto;
+  padding: 15px 20px;
+  background-color: #fff8e1;
+  border: 1px solid #f0c14b;
+  border-radius: 8px;
+}
+
+.key-dates h3 {
+  margin-top: 0;
+  color: #333;
+  text-align: center;
+}
+
+.key-dates ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.key-dates li {
+  margin: 6px 0;
+  color: #444;
+}
+
 h1 {
   color: #333;
   text-align: center;
@@ -52,15 +77,15 @@ a:hover {
   .bus-wankers-page {
     padding: 10px;
   }
-  
+
   h1 {
     font-size: 1.5em;
   }
-  
+
   h2 {
     font-size: 1.2em;
   }
-  
+
   video {
     width: 100%;
     height: auto;
