@@ -150,7 +150,12 @@ if [ "$DO_BUILD" = true ]; then
     echo -e "${BLUE}>>> Phase 2: Build Bus Wankers Frontend${NC}"
     echo "    Installing deps and building (CRA -> build/)..."
     npm install
-    npm run build
+    # DISABLE_ESLINT_PLUGIN=true: eslint-config-react-app 7.0.1 (bundled with
+    # react-scripts 5.0.1) is incompatible with eslint 8.57.1's config schema
+    # ("Environment key \"jest/globals\" is unknown") - this skips CRA's
+    # eslint-loader integration so the build doesn't fail on it. The warnings
+    # you see from `npx eslint` directly are unaffected/still useful.
+    DISABLE_ESLINT_PLUGIN=true npm run build
     echo -e "${GREEN}[OK] Frontend built${NC}"
 else
     echo -e "${YELLOW}>>> Phase 2: Build (skipped) - deploying existing build/${NC}"

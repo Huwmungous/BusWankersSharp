@@ -27,6 +27,7 @@ die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "run with sudo"
 
+# --- Trigger + confirm the automount by ACCESS, not by mount state ----------
 log "Triggering automount of ${HDD}..."
 probe="${HDD}/.automount-probe.$$"
 touch "$probe" 2>/dev/null || die "cannot write to ${HDD} - HDD/automount not available"
@@ -34,9 +35,11 @@ touch "$probe" 2>/dev/null || die "cannot write to ${HDD} - HDD/automount not av
 rm -f "$probe"
 log "  ${HDD} writable. Device: $(findmnt -no SOURCE,FSTYPE "$HDD" 2>/dev/null | tail -1)"
 
+# --- Create the directory tree -----------------------------------------------
 log "Creating web root under ${HDD_SRV}..."
 mkdir -p "${HDD_SRV}/BusWankersSharp/Apps/bus-wankers-react"
 
+# --- Top-level symlink into the HDD (idempotent) -----------------------------
 link="/srv/BusWankersSharp"
 target="${HDD_SRV}/BusWankersSharp"
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
@@ -50,10 +53,12 @@ else
     ln -s "$target" "$link"; log "Linked ${link} -> ${target}"
 fi
 
+# --- Nested app symlink (absolute, resolves through the top symlink) --------
 mkdir -p /srv/BusWankersSharp/www
 ln -sfn /srv/BusWankersSharp/Apps/bus-wankers-react /srv/BusWankersSharp/www/buswankers
 log "Linked /srv/BusWankersSharp/www/buswankers"
 
+# --- Ownership ----------------------------------------------------------------
 chown -R "${WEB_USER}:${WEB_USER}" "${HDD_SRV}/BusWankersSharp"
 log "Ownership set to ${WEB_USER}."
 

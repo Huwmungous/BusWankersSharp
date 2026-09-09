@@ -1,47 +1,97 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './BusWankersPage.css';
 
 const pub = process.env.PUBLIC_URL;
 
+// Two separate sales use two separate autofill files - keep the filename,
+// dates and (where known) cost tied to whichever tab is selected so nobody
+// downloads/imports the wrong one.
+const SALE_INFO = {
+  coach: {
+    label: 'Coach Tickets',
+    shortLabel: 'Coach + Ticket Package Sale',
+    heading: 'This is the 2027 Glastonbury Coach Ticket Autofill File',
+    filename: 'bw_autofill.csv',
+    dates: [
+      'Registration deadline: 5:00pm BST, Friday 25th September 2026',
+      'Coach + ticket package sale: 6:00pm BST, Thursday 1st October 2026',
+    ],
+    cost: null,
+  },
+  general: {
+    label: 'General Sale',
+    shortLabel: 'General Sale',
+    heading: 'This is the 2027 Glastonbury General Sale Autofill File',
+    filename: 'g_autofill.csv',
+    dates: [
+      'Registration deadline: 5:00pm BST, Friday 25th September 2026',
+      'General sale (standard tickets): 9:00am BST, Sunday 4th October 2026',
+    ],
+    cost: [
+      "General Admission tickets (valid Wed 23rd – Sun 27th June 2027): £408 (including a £5 booking fee per ticket) plus postage and packing",
+      "Deposit is £100 per person — for a 6-person group that's £600 you need in your account on ticket buying day",
+    ],
+  },
+};
+
 const BusWankersPage = () => {
+  const [saleType, setSaleType] = useState('coach');
+  const info = SALE_INFO[saleType];
+
   return (
     <div className="bus-wankers-page">
       <div className="container">
-        <h1>This is the 2027 Glastonbury General Sale Autofill File</h1>
+        <div className="sale-tabs" role="tablist" aria-label="Ticket sale type">
+          {Object.entries(SALE_INFO).map(([key, tab]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={saleType === key}
+              className={`sale-tab${saleType === key ? ' active' : ''}`}
+              onClick={() => setSaleType(key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <h1>{info.heading}</h1>
         <h2>Use this file to populate your Autofill Options</h2>
 
         <div className="key-dates">
-          <h3>Key Dates for the 2027 General Sale</h3>
+          <h3>Key Dates for the 2027 {info.shortLabel}</h3>
           <ul>
-            <li>Registration deadline: 5:00pm BST, Friday 25th September 2026</li>
-            <li>Coach + ticket package sale: 6:00pm BST, Thursday 1st October 2026</li>
-            <li>General sale (standard tickets): 9:00am BST, Sunday 4th October 2026</li>
+            {info.dates.map((d) => <li key={d}>{d}</li>)}
           </ul>
+          {info.cost && (
+            <ul className="cost-info">
+              {info.cost.map((c) => <li key={c}>{c}</li>)}
+            </ul>
+          )}
         </div>
 
         <div className="image-container">
-          <img src={`${pub}/Hippies_1.png`} alt="ImportExport Image" className="image-with-shadow" />
+          <img src={`${pub}/Hippies_1.png`} alt="ImportExport" className="image-with-shadow" />
         </div>
 
         <h4>In AutoFill Options you will see a band of tabs across the top. You should be on the Sync tab to start.</h4>
 
         <div className="image-container">
-          <img src={`${pub}/sync.png`} alt="sync Image" className="image-with-shadow" />
+          <img src={`${pub}/sync.png`} alt="Sync" className="image-with-shadow" />
         </div>
 
         <br />
 
-        <h4>You can enter the following "https://longmanrd.net/buswankers/g_autofill.csv" into the Remote Import box and click Import.</h4>
+        <h4>You can enter the following "https://longmanrd.net/buswankers/{info.filename}" into the Remote Import box and click Import.</h4>
 
         <h4>OR</h4>
 
         <h4>
           You can click{' '}
-          <a href={`${pub}/g_autofill.csv`} download="g_autofill.csv">this link</a>
-          {' '}to download autofill file and save it, you then click on the Import button under Import/Export, and browse to where you've saved the file
+          <a href={`${pub}/${info.filename}`} download={info.filename}>this link</a>
+          {' '}to download the {info.label.toLowerCase()} autofill file and save it, you then click on the Import button under Import/Export, and browse to where you've saved the file
         </h4>
-
-        <h1>NB: !!! the filename is different for general sale; 'g_autofill' NOT 'bw_autofill'</h1>
 
         <br />
 
@@ -54,7 +104,7 @@ const BusWankersPage = () => {
         <br />
 
         <div className="image-container">
-          <img src={`${pub}/formfield.png`} alt="Form Fields Image" className="image-with-shadow" />
+          <img src={`${pub}/formfield.png`} alt="Form Fields" className="image-with-shadow" />
         </div>
 
         <br />

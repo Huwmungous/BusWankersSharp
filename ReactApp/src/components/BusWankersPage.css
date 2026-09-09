@@ -19,6 +19,39 @@
   text-align: center;
 }
 
+.sale-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sale-tab {
+  padding: 10px 20px;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  background: #f0f0f0;
+  color: #333;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  font-size: 1em;
+  font-weight: bold;
+}
+
+.sale-tab:hover {
+  background: #e6e6e6;
+}
+
+.sale-tab.active {
+  background: #fff;
+  border-color: #0066cc;
+  color: #0066cc;
+}
+
+.sale-tab.active:hover {
+  background: #fff;
+}
+
 .key-dates {
   max-width: 480px;
   margin: 20px auto;
@@ -26,6 +59,18 @@
   background-color: #fff8e1;
   border: 1px solid #f0c14b;
   border-radius: 8px;
+}
+
+.key-dates .cost-info {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #f0c14b;
+  list-style: none;
+  padding-left: 0;
+}
+
+.key-dates .cost-info li {
+  margin: 6px 0;
 }
 
 .key-dates h3 {
@@ -77,15 +122,15 @@ a:hover {
   .bus-wankers-page {
     padding: 10px;
   }
-
+  
   h1 {
     font-size: 1.5em;
   }
-
+  
   h2 {
     font-size: 1.2em;
   }
-
+  
   video {
     width: 100%;
     height: auto;

@@ -26,3 +26,16 @@ h1, h2, p, a {
     margin: 0 auto; /* Center the block itself if it's not inside a flex container */
 }
 
+.key-dates {
+    max-width: 480px;
+    margin: 20px auto;
+    padding: 5px 20px;
+    background-color: #fff8e1;
+    border: 1px solid #f0c14b;
+    border-radius: 8px;
+}
+
+.key-dates ul {
+    text-align: left;
+}
+
