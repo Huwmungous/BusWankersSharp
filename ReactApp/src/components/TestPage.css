@@ -60,12 +60,46 @@ label {
   border-radius: 4px;
 }
 
+.registration-pair {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #ddd;
+}
+
+.registration-pair:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.guest-count {
+  display: inline-block;
+  font-weight: bold;
+  color: #0066cc;
+  margin-bottom: 8px;
+}
+
 .registration-item {
   margin-bottom: 15px;
 }
 
 .registration-item:last-child {
   margin-bottom: 0;
+}
+
+.clear-form {
+  text-align: center;
+  margin-top: 15px;
+}
+
+.clear-form a {
+  color: #cc0000;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.clear-form a:hover {
+  text-decoration: underline;
 }
 
 .submit-button {
@@ -89,11 +123,11 @@ label {
     padding: 15px;
     margin: 10px;
   }
-  
+
   h1 {
     font-size: 1.5em;
   }
-  
+
   .form-input {
     font-size: 14px;
   }
