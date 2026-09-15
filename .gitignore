@@ -1,11 +1,18 @@
-﻿################################################################################
+################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
 /.vs/BusWankersSharp/FileContentIndex
 /.vs
-/Common/bin
-/Common/obj
-/AutofillFromCSV/bin
-/AutofillFromCSV/obj
-/.vs
+
+# .NET build output, every project
+bin/
+obj/
+*.csproj.Backup.tmp
+
+# Create React App (ReactApp) - deps and build output
+/ReactApp/node_modules/
+/ReactApp/build/
+
+# Local AutofillStore used by `dotnet run` (appsettings.Development.json)
+/UploaderService/autofill-store/

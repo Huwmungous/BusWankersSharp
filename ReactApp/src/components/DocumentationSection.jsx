@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { downloadStoredFile, downloadUrlFor } from '../api/autofillApi';
 import './DocumentationSection.css';
 
 const pub = process.env.PUBLIC_URL;
@@ -61,25 +62,78 @@ const SALE_INFO = {
   },
 };
 
-const DocumentationSection = () => {
+const formatWhen = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+// storedFiles: Map of filename -> { filename, size, lastModified } from the
+// backend's store (see BusWankersPage). A sale whose filename isn't in it has
+// nothing ingested yet - the dropdown says so, and the download button is
+// disabled for it. While the store is still loading (or unreachable) nothing
+// is known, so every sale is treated as empty rather than guessing.
+const DocumentationSection = ({ storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
   const [saleType, setSaleType] = useState('Coach');
+  const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
+  const [downloadError, setDownloadError] = useState('');
+
   const info = SALE_INFO[saleType];
+  const stored = storedFiles.get(info.filename);
+  const isEmpty = !stored || stored.size === 0;
+  const remoteImportUrl = `https://longmanrd.net/buswankers/${info.filename}`;
+
+  const handleDownload = async () => {
+    if (isEmpty) return;
+    setDownloadStatus('working');
+    setDownloadError('');
+    try {
+      await downloadStoredFile(info.filename);
+      setDownloadStatus('idle');
+    } catch (err) {
+      setDownloadStatus('error');
+      setDownloadError(err.message || 'Download failed.');
+    }
+  };
 
   return (
     <section className="doc-section" aria-label="Autofill file documentation">
       <div className="container">
         <div className="form-group sale-picker">
           <label htmlFor="saleType">Which autofill file do you want?</label>
-          <select
-            id="saleType"
-            className="form-input"
-            value={saleType}
-            onChange={(e) => setSaleType(e.target.value)}
-          >
-            {Object.entries(SALE_INFO).map(([key, tab]) => (
-              <option key={key} value={key}>{tab.label}</option>
-            ))}
-          </select>
+          <div className="sale-picker-row">
+            <select
+              id="saleType"
+              className="form-input"
+              value={saleType}
+              onChange={(e) => { setSaleType(e.target.value); setDownloadStatus('idle'); setDownloadError(''); }}
+            >
+              {Object.entries(SALE_INFO).map(([key, tab]) => {
+                const f = storedFiles.get(tab.filename);
+                const empty = !f || f.size === 0;
+                return (
+                  <option key={key} value={key}>
+                    {tab.label}{empty ? ' (empty)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+            <button
+              type="button"
+              className="download-button"
+              onClick={handleDownload}
+              disabled={isEmpty || downloadStatus === 'working'}
+              title={isEmpty ? 'Nothing has been ingested for this sale yet' : `Download ${info.filename}`}
+            >
+              {downloadStatus === 'working' ? 'Downloading…' : 'Download'}
+            </button>
+          </div>
+          <p className="sale-picker-note">
+            {storeStatus === 'loading' && 'Checking which autofill files are available…'}
+            {storeStatus === 'error' && `Couldn't check the autofill files: ${storeError}`}
+            {storeStatus === 'ready' && isEmpty && 'No autofill file has been ingested for this sale yet - upload a spreadsheet at the top of the page.'}
+            {storeStatus === 'ready' && !isEmpty && `${info.filename} - last updated ${formatWhen(stored.lastModified)}`}
+          </p>
+          {downloadStatus === 'error' && <p className="sale-picker-note sale-picker-error">{downloadError}</p>}
         </div>
 
         <h1>{info.heading}</h1>
@@ -109,14 +163,19 @@ const DocumentationSection = () => {
 
         <br />
 
-        <h4>You can enter the following "https://longmanrd.net/buswankers/{info.filename}" into the Remote Import box and click Import.</h4>
+        <h4>You can enter the following "{remoteImportUrl}" into the Remote Import box and click Import.</h4>
 
         <h4>OR</h4>
 
         <h4>
           You can click{' '}
-          <a href={`${pub}/${info.filename}`} download={info.filename}>this link</a>
+          {isEmpty ? (
+            <span className="link-disabled" title="Nothing has been ingested for this sale yet">this link</span>
+          ) : (
+            <a href={downloadUrlFor(info.filename)} download={info.filename}>this link</a>
+          )}
           {' '}to download the {info.label.toLowerCase()} autofill file and save it, you then click on the Import button under Import/Export, and browse to where you've saved the file
+          {isEmpty && ' (not available until a spreadsheet has been ingested for this sale)'}
         </h4>
 
         <br />

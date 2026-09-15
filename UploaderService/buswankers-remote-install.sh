@@ -129,6 +129,24 @@ echo -e "${GREEN}[OK] Files deployed${NC}"
 echo ""
 
 # ----------------------------
+# Phase 3b: Autofill store
+# ----------------------------
+# The ingested autofill files (POST /api/autofill/ingest) live here, NOT under
+# $DEPLOY_PATH - Phase 3 rm -rf's the deploy path on every release, and the
+# whole point of the store is that a freshly uploaded spreadsheet survives the
+# next deploy. Must agree with AutofillStore:Directory in appsettings.json.
+# Existing files are left exactly as they are; only ownership is (re)asserted
+# so the service account can write there after a user/group change.
+echo -e "${BLUE}>>> Phase 3b: Autofill Store${NC}"
+STORE_DIR="${BW_AUTOFILL_STORE:-/srv/BusWankersSharp/Data/autofill}"
+mkdir -p "$STORE_DIR"
+chown "$SERVICE_USER:$SERVICE_GROUP" "$STORE_DIR"
+chmod u=rwx,g=rx,o= "$STORE_DIR"
+STORE_COUNT=$(find "$STORE_DIR" -maxdepth 1 -name '*.csv' 2>/dev/null | wc -l)
+echo -e "${GREEN}[OK] $STORE_DIR ready ($STORE_COUNT autofill file(s) present)${NC}"
+echo ""
+
+# ----------------------------
 # Phase 4: systemd unit
 # ----------------------------
 echo -e "${BLUE}>>> Phase 4: Configure systemd${NC}"
