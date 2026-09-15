@@ -22,8 +22,12 @@ set -e
 #     a password)
 #   - holly web root laid out by ops/deploy/setup-holly-buswankers-links.sh
 #     (so $DEPLOY_DIR exists on the HDD and nginx serves it via the
-#     www/buswankers symlink) and the nginx include from
-#     ops/nginx/buswankers.inc added to the longmanrd.net server block
+#     www/buswankers symlink)
+#
+# Phase 3 also ships ops/nginx/buswankers.inc and buswankers-api.inc to holly
+# on every run (install + idempotent "include" wiring into the longmanrd.net
+# server block) - this used to be a manual one-time copy step, now the repo
+# is the source of truth and holly's nginx config stays in sync with it.
 # ============================================================================
 
 # ----------------------------
@@ -173,21 +177,35 @@ echo ""
 echo -e "${BLUE}>>> Phase 3: Deploy to $REMOTE${NC}"
 
 STAGING="/tmp/bw-frontend-deploy.$$"
+NGINX_STAGING="/tmp/bw-frontend-nginx.$$"
 
 # 1. Push the build to a staging dir on holly (as $DEPLOY_USER, no sudo needed).
 echo "    Pushing build/ -> $REMOTE:$STAGING ..."
 rsync -a --delete -e "ssh -o BatchMode=yes" "build/" "$REMOTE:$STAGING/"
 
-# 2. On holly, sync staging into place with the correct ownership, then
-#    reload nginx. Debian: web user is www-data; no SELinux, so no
-#    chcon/restorecon needed (that's a Fedora concern elsewhere in the
-#    estate). Reads its script from stdin via `bash -s`; DEPLOY_DIR/STAGING
-#    are passed as positional args. Requires NOPASSWD sudo on holly.
+# 1b. Push the nginx include files too. deploy-buswankers-backend.sh never
+#     touches holly (it only ships to intelligence), so this script - already
+#     SSHing into holly and reloading nginx for the static build - is the
+#     natural place to keep ops/nginx/*.inc in sync there too, instead of
+#     relying on someone remembering a manual one-time copy.
+echo "    Pushing nginx includes -> $REMOTE:$NGINX_STAGING ..."
+ssh -o BatchMode=yes "$REMOTE" "mkdir -p '$NGINX_STAGING'"
+rsync -a -e "ssh -o BatchMode=yes" \
+    "$BW_REPO/ops/nginx/buswankers.inc" "$BW_REPO/ops/nginx/buswankers-api.inc" \
+    "$REMOTE:$NGINX_STAGING/"
+
+# 2. On holly, sync staging into place with the correct ownership, install/
+#    wire up the nginx includes, then reload nginx. Debian: web user is
+#    www-data; no SELinux, so no chcon/restorecon needed (that's a Fedora
+#    concern elsewhere in the estate). Reads its script from stdin via
+#    `bash -s`; DEPLOY_DIR/STAGING/NGINX_STAGING are passed as positional
+#    args. Requires NOPASSWD sudo on holly.
 echo "    Activating on holly (sync -> reload)..."
-ssh -o BatchMode=yes "$REMOTE" "sudo bash -s -- '$DEPLOY_DIR' '$STAGING'" << 'REMOTE_EOF'
+ssh -o BatchMode=yes "$REMOTE" "sudo bash -s -- '$DEPLOY_DIR' '$STAGING' '$NGINX_STAGING'" << 'REMOTE_EOF'
 set -e
 DEPLOY_DIR="$1"
 STAGING="$2"
+NGINX_STAGING="$3"
 
 mkdir -p "$DEPLOY_DIR"
 
@@ -196,6 +214,28 @@ rsync -a --delete --chown=www-data:www-data "$STAGING"/ "$DEPLOY_DIR"/
 chmod -R u=rwX,go=rX "$DEPLOY_DIR"
 
 rm -rf "$STAGING"
+
+# Install the nginx include files and wire them into the longmanrd.net
+# server block if not already present there, idempotently - this used to be
+# a manual one-time copy step per the .inc files' own header comments; every
+# deploy now keeps holly's nginx config in sync with the repo instead.
+SITE_CONF="/etc/nginx/sites-available/longmanrd.net"
+if [ -d /etc/nginx/conf.d ] && [ -f "$SITE_CONF" ]; then
+    for INC in buswankers.inc buswankers-api.inc; do
+        install -m 0644 "$NGINX_STAGING/$INC" "/etc/nginx/conf.d/$INC"
+        if ! grep -q "include /etc/nginx/conf.d/$INC;" "$SITE_CONF"; then
+            if grep -q "include /etc/nginx/conf.d/config-webservice.inc;" "$SITE_CONF"; then
+                sed -i "/include \/etc\/nginx\/conf.d\/config-webservice.inc;/a\\    include /etc/nginx/conf.d/$INC;" "$SITE_CONF"
+                echo "    Wired 'include $INC;' into $SITE_CONF"
+            else
+                echo "    [WARN] Could not find an anchor include line in $SITE_CONF - add 'include /etc/nginx/conf.d/$INC;' to the longmanrd.net server block manually."
+            fi
+        fi
+    done
+else
+    echo "    [WARN] $SITE_CONF or /etc/nginx/conf.d not found - install the nginx includes manually (see ops/nginx/*.inc)."
+fi
+rm -rf "$NGINX_STAGING"
 
 # Reload nginx if present (won't fail the deploy if it isn't installed yet).
 if command -v nginx >/dev/null 2>&1 && systemctl is-enabled nginx >/dev/null 2>&1; then
