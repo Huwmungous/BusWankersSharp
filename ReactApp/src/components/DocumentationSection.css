@@ -1,0 +1,134 @@
+.doc-section {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+}
+
+.doc-section .container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.doc-section .image-with-shadow {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.doc-section .image-container {
+  text-align: center;
+}
+
+.doc-section .sale-picker {
+  max-width: 320px;
+  margin: 0 auto 20px;
+  text-align: center;
+}
+
+.doc-section .sale-picker label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+  color: #444;
+}
+
+.doc-section .form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+  box-sizing: border-box;
+  background-color: white;
+}
+
+.doc-section .form-input:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 5px rgba(0, 102, 204, 0.3);
+}
+
+.doc-section .key-dates {
+  max-width: 480px;
+  margin: 20px auto;
+  padding: 15px 20px;
+  background-color: #fff8e1;
+  border: 1px solid #f0c14b;
+  border-radius: 8px;
+}
+
+.doc-section .key-dates .cost-info {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #f0c14b;
+  list-style: none;
+  padding-left: 0;
+}
+
+.doc-section .key-dates .cost-info li {
+  margin: 6px 0;
+}
+
+.doc-section .key-dates h3 {
+  margin-top: 0;
+  color: #333;
+  text-align: center;
+}
+
+.doc-section .key-dates ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.doc-section .key-dates li {
+  margin: 6px 0;
+  color: #444;
+}
+
+.doc-section h1 {
+  color: #333;
+  text-align: center;
+}
+
+.doc-section h2 {
+  color: #555;
+  text-align: center;
+}
+
+.doc-section h4 {
+  color: #444;
+  margin: 15px 0;
+}
+
+.doc-section a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.doc-section a:hover {
+  text-decoration: underline;
+}
+
+.doc-section .video-container {
+  text-align: center;
+  margin: 20px 0;
+}
+
+@media (max-width: 768px) {
+  .doc-section {
+    padding: 10px;
+  }
+
+  .doc-section h1 {
+    font-size: 1.5em;
+  }
+
+  .doc-section h2 {
+    font-size: 1.2em;
+  }
+
+  .doc-section video {
+    width: 100%;
+    height: auto;
+  }
+}

@@ -1,0 +1,134 @@
+.test-section {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  background-color: #f5f5f5;
+}
+
+.test-section .container {
+  max-width: 800px;
+  margin: 0 auto;
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.test-section h2 {
+  color: #333;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.test-section h3 {
+  color: #555;
+  border-bottom: 2px solid #0066cc;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.test-section .form-group {
+  margin-bottom: 20px;
+}
+
+.test-section label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #444;
+}
+
+.test-section .form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.test-section .form-input:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 5px rgba(0, 102, 204, 0.3);
+}
+
+.test-section .additional-registrations {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.test-section .registration-pair {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px dashed #ddd;
+}
+
+.test-section .registration-pair:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.test-section .guest-count {
+  display: inline-block;
+  font-weight: bold;
+  color: #0066cc;
+  margin-bottom: 8px;
+}
+
+.test-section .registration-item {
+  margin-bottom: 15px;
+}
+
+.test-section .registration-item:last-child {
+  margin-bottom: 0;
+}
+
+.test-section .clear-form {
+  text-align: center;
+  margin-top: 15px;
+}
+
+.test-section .clear-form a {
+  color: #cc0000;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.test-section .clear-form a:hover {
+  text-decoration: underline;
+}
+
+.test-section .submit-button {
+  background-color: #0066cc;
+  color: white;
+  padding: 12px 30px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.test-section .submit-button:hover {
+  background-color: #0055aa;
+}
+
+@media (max-width: 768px) {
+  .test-section .container {
+    padding: 15px;
+    margin: 10px;
+  }
+
+  .test-section h2 {
+    font-size: 1.5em;
+  }
+
+  .test-section .form-input {
+    font-size: 14px;
+  }
+}
