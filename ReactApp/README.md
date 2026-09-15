@@ -64,7 +64,7 @@ Two ways a user gets a file, both served by `GET /files/{filename}`:
 
 - **Remote Import** in AutoFill Options: the documented URL is still
   `https://longmanrd.net/buswankers/<file>` (e.g. `.../buswankers/g_autofill.csv`).
-  `ops/nginx/buswankers.inc` has a regex location that rewrites exactly that shape
+  `ops/nginx/buswankers-api.inc` has a regex location that rewrites exactly that shape
   onto the API route, so URLs people already have keep working.
 - **Download button / "this link"**: fetches `/buswankers-api/api/autofill/files/<file>`
   and saves it via the browser (`src/api/autofillApi.js`).
@@ -151,6 +151,9 @@ output is `build/`, not `dist/`.
 -prefixed asset URLs (and is what `process.env.PUBLIC_URL` resolves from in the
 components) - keep it in sync if the public path ever changes. The
 `try_files ... /buswankers/index.html` fallback in `buswankers.inc` only matters
-for a direct hit that isn't a static asset; the `*_autofill.csv` regex location in
-the same file must stay ahead of it in spirit (regex locations win over the prefix
-block regardless of order, but keep them together).
+for a direct hit that isn't a static asset. NB holly's `longmanrd.conf` currently
+declares `location /buswankers/` inline in the HTTPS server block, so the deploy
+script installs `buswankers.inc` but doesn't include it (nginx refuses a duplicate
+location); `buswankers-api.inc` - the API proxy plus the `*_autofill.csv` rewrite -
+is always wired into that block, and the script fails the deploy unless
+`/buswankers-api/Health` then answers 200 from outside.
