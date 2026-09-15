@@ -184,6 +184,80 @@ namespace Autofills.Common
             bw.WriteOutput(data);
         }
 
+        /// <summary>
+        /// Same output format as GenerateAutofillText(inputFile, outputFile, maxInAGroup)
+        /// above (headers / rules / footer), but built directly from already-grouped,
+        /// in-memory registrants (see SheetRegistrationReader) instead of a pre-written
+        /// per-group CSV file with a literal group-letter column. Used by the web
+        /// upload pipeline; returns the text rather than writing to disk so the caller
+        /// can stream it straight back as a download.
+        /// </summary>
+        public static string GenerateAutofillTextFromGroups(IEnumerable<RegistrationGroup> groups, int maxInAGroup)
+        {
+            var groupList = groups.ToList();
+            var sb = new StringBuilder();
+
+            sb.AppendLine("### AUTOFILL PROFILES ###,,,,,,");
+            sb.AppendLine("Profile ID, Name, Site, Hotkey,,,");
+
+            for (int i = 0; i < groupList.Count; i++)
+                sb.AppendLine($"c{i + 1},Group-{groupList[i].GroupLabel},,,,,");
+
+            sb.AppendLine("### AUTOFILL RULES ###,,,,,,");
+            sb.AppendLine("Rule ID,Type,Name,Value,Site,Mode,Profile");
+
+            int rowCount = 1;
+            for (int i = 0; i < groupList.Count; i++)
+            {
+                var code = $"c{i + 1}";
+                int slot = 0;
+
+                foreach (var member in groupList[i].Members)
+                {
+                    sb.AppendLine($"r{rowCount},0,\"registrations_{slot}__RegistrationId\",\"{member.RegistrationId}\",\"\",1,{code}");
+                    rowCount++;
+                    sb.AppendLine($"r{rowCount},0,\"registrations_{slot}__Postcode\",\"{member.PostCode}\",\"\",1,{code}");
+                    rowCount++;
+                    slot++;
+                }
+
+                while (slot < maxInAGroup)
+                {
+                    sb.AppendLine($"r{rowCount},0,\"registrations_{slot}__RegistrationId\",\"\",\"\",1,{code}");
+                    rowCount++;
+                    sb.AppendLine($"r{rowCount},0,\"registrations_{slot}__Postcode\",\"\",\"\",1,{code}");
+                    rowCount++;
+                    slot++;
+                }
+            }
+
+            sb.AppendLine("### AUTOFILL OPTIONS ###,,,,,,");
+            sb.AppendLine("advanced,\"[]\",,,,,");
+            sb.AppendLine("exceptions,\"[]\",,,,,");
+            sb.AppendLine("textclips,\"[]\",,,,,");
+            sb.AppendLine("variables,\"[]\",,,,,");
+            sb.AppendLine("activecat,1,,,,,");
+            sb.AppendLine("autoimport,0,,,,,");
+            sb.AppendLine("backup,0,30,,,,");
+            sb.AppendLine("badge,1,,,,,");
+            sb.AppendLine("closeinfobar,1,1,,,,");
+            sb.AppendLine("debug,0,,,,,");
+            sb.AppendLine("delay,0,0.5,,,,");
+            sb.AppendLine("fluid,1,,,,,");
+            sb.AppendLine("hidebackup,0,,,,,");
+            sb.AppendLine("manual,0,,,,,");
+            sb.AppendLine("mask,1,,,,,");
+            sb.AppendLine("menu,1,,,,,");
+            sb.AppendLine("overwrite,1,,,,,");
+            sb.AppendLine("sitefilters,1,,,,,");
+            sb.AppendLine("skiphidden,0,,,,,");
+            sb.AppendLine("sound,1,,,,,");
+            sb.AppendLine("vars,1,,,,,");
+            sb.AppendLine("voice,0,1,,,,");
+
+            return sb.ToString();
+        }
+
         public static bool CheckPaths(string inputFile, string outputFile)
         {
             bool result = false;
@@ -198,7 +272,9 @@ namespace Autofills.Common
             {
                 try
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(outputFile));
+                    var dir = Path.GetDirectoryName(outputFile);
+                    if (!string.IsNullOrEmpty(dir))
+                        Directory.CreateDirectory(dir);
 
                     result = true;
                 }

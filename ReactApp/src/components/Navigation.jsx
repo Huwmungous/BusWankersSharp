@@ -14,6 +14,9 @@ const Navigation = () => {
           <li className="nav-item">
             <Link to="/test" className="nav-link">Test Form</Link>
           </li>
+          <li className="nav-item">
+            <Link to="/upload" className="nav-link">Generate Autofill</Link>
+          </li>
         </ul>
       </div>
     </nav>

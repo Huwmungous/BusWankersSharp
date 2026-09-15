@@ -1,0 +1,22 @@
+[Unit]
+Description=BusWankersSharp Uploader (spreadsheet -> autofill) Web Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/BusWankersSharp/WebServices/UploaderService
+ExecStart=/usr/bin/dotnet /srv/BusWankersSharp/WebServices/UploaderService/UploaderService.dll
+Restart=on-failure
+RestartSec=5
+
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Runs as Hugh's own AD account, same precedent as rozebowldeploydaemon.service on
+# this box - BusWankersSharp is a personal project, not Infoforum, so there's no
+# dedicated IFServices-style service account for it. Adjust if you'd rather create
+# one (matching how config-ws.service/logger-ws.service run).
+User=hugh@longmanrd.infoforum.co.uk
+
+[Install]
+WantedBy=multi-user.target
