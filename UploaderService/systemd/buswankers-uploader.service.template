@@ -3,8 +3,12 @@
 # ============================================================================
 #
 # Canonical unit template for the UploaderService (spreadsheet -> autofill
-# generation) running on QUEEG (port 5061, self-hosted - the frontend's own
-# nginx reverse-proxies /buswankers-api/ to it, see ops/nginx/buswankers-api.inc).
+# generation and the live AutofillStore) running on INTELLIGENCE, port 5038
+# (IFGlobal.PortResolver) - holly's nginx reverse-proxies /buswankers-api/ to
+# it (ops/nginx/buswankers-api.inc) and rewrites /buswankers/<name>_autofill.csv
+# onto its download route (ops/nginx/buswankers.inc). NB the installer
+# (buswankers-remote-install.sh) writes its own unit content and is the live
+# source of truth; this template is the reference copy.
 #
 # Models on the estate's static-template + sed-substitution pattern (see
 # Infoforum's RozeBowlDeployDaemon/systemd/rozebowldeploydaemon.service.template

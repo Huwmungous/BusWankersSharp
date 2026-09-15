@@ -1,24 +1,77 @@
 # Bus Wankers React Application
 
-This is a React-based web application that replaces the static `www/wankers.html` and
-`www/test_page.html` pages. It documents how to use the Bus Wankers Glastonbury
-autofill functionality, and is updated for the **2027 Glastonbury General Sale**
-(sale opens 9:00am BST, Sunday 4th October 2026).
+The Bus Wankers site: one React page that documents how to use the Glastonbury
+autofill files with the AutoFill Options browser extension, lets a group organiser
+refresh those files from a registration spreadsheet, and provides a mockup of the
+registration form to test against. Updated for the **2027 Glastonbury sales**
+(coach + ticket package sale 6:00pm BST Thursday 1st October 2026; general sale
+9:00am BST Sunday 4th October 2026).
 
-## Features
+It replaced the original static `www/wankers.html` / `www/test_page.html` pages,
+which have since been removed from the repo.
 
-- Responsive design that works on desktop and mobile devices
-- Displays instructions for using the autofill feature, with the current sale's key dates
-- Tabbed **Coach Tickets** / **General Sale** documentation view - each tab has its own
-  key dates, cost info (where known) and the correct autofill filename, since the two
-  sales use two different autofill files (see below)
-- Shows images and video demonstrations
-- Includes a download link for the current tab's autofill file (`bw_autofill.csv` for
-  the coach + ticket package sale, `g_autofill.csv` for the general sale)
-- A working test page (`/test`) with real `registrations_N__RegistrationId` /
-  `registrations_N__PostCode` fields (up to 6 people per group, matching
-  `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so the AutoFill Options browser
-  extension can be tested end-to-end before the real sale
+## What's on the page
+
+Top to bottom (all one page - the nav bar links are in-page anchors):
+
+1. **Upload bar** (`IngestBar`) - choose a registration workbook, enter the shared
+   password, click *Upload & Ingest*. Every sale sheet in the workbook is generated
+   and written into the live autofill files in one go; per-sheet outcomes are shown
+   and the dropdown below refreshes.
+2. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
+   (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), each with
+   its own key dates, cost info where known, and the Remote Import URL to paste into
+   AutoFill Options. A sale with nothing ingested yet reads `(empty)`; the
+   **Download** button next to the dropdown (and the "this link" download in the
+   text) is disabled for it.
+3. **Test form** (`TestSection`) - a mockup of the Glastonbury registration form with
+   real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
+   6 people per group, matching `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so
+   the extension's profile can be tested end-to-end before the real sale.
+4. **Generate a one-off file** (`UploadSection`) - upload a spreadsheet, pick one
+   sale sheet, get that sale's autofill file straight back as a download. This does
+   **not** touch the live files - it's for checking a spreadsheet or handing a file
+   to someone directly. Use the upload bar at the top to publish.
+
+## Where the autofill files live and how they're downloaded
+
+The autofill files are **not** static assets in this app. They live in
+UploaderService's `AutofillStore` on intelligence
+(`/srv/BusWankersSharp/Data/autofill`, created by the backend installer, outside the
+deploy path so releases don't wipe it) and are named by
+`UploadServiceController.DownloadNameFor`:
+
+| Sale sheet         | File                          |
+|--------------------|-------------------------------|
+| Coach              | `bw_autofill.csv`             |
+| General            | `g_autofill.csv`              |
+| Resale - Coach     | `resale_coach_autofill.csv`   |
+| Resale - General   | `resale_general_autofill.csv` |
+| Demo               | `demo_autofill.csv`           |
+| anything else      | `<slug-of-sheet-name>_autofill.csv` |
+
+The page talks to the backend at `/buswankers-api/api/autofill` (holly's nginx proxies
+that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
+
+| Endpoint                     | Auth     | Used by                                            |
+|------------------------------|----------|----------------------------------------------------|
+| `POST /ingest`               | password | upload bar - every sale sheet -> the store          |
+| `GET  /files`                | none     | dropdown - which files exist, size, last modified  |
+| `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
+| `POST /sheets`, `POST /generate` | password | one-off generate section                       |
+
+Two ways a user gets a file, both served by `GET /files/{filename}`:
+
+- **Remote Import** in AutoFill Options: the documented URL is still
+  `https://longmanrd.net/buswankers/<file>` (e.g. `.../buswankers/g_autofill.csv`).
+  `ops/nginx/buswankers.inc` has a regex location that rewrites exactly that shape
+  onto the API route, so URLs people already have keep working.
+- **Download button / "this link"**: fetches `/buswankers-api/api/autofill/files/<file>`
+  and saves it via the browser (`src/api/autofillApi.js`).
+
+The store starts empty after a fresh install: every sale shows `(empty)` until a
+workbook has been ingested. To seed it by hand, drop a file with one of the names
+above into the store directory on intelligence (owned by `BusWankersServices`).
 
 ## Getting Started
 
@@ -31,6 +84,9 @@ autofill functionality, and is updated for the **2027 Glastonbury General Sale**
    ```
    npm start
    ```
+   The page's `fetch()` calls go to `/buswankers-api/...` on the same origin, so for
+   the upload/download parts to work locally you need either a proxy to a running
+   UploaderService or to be testing against the deployed site.
 
 3. Build for production:
    ```
@@ -39,89 +95,62 @@ autofill functionality, and is updated for the **2027 Glastonbury General Sale**
 
 ## Files Structure
 
-- `src/App.jsx` - Main App component, sets up routing (`/` and `/test`) with `HashRouter`
-  (chosen so the built site can be served as static files without server-side rewrite rules)
-- `src/components/Navigation.jsx` - Top navigation between the documentation and test pages
-- `src/components/BusWankersPage.jsx` - Main component displaying the documentation,
-  with a Coach Tickets / General Sale tab switcher (`SALE_INFO` at the top of the file
-  is the single place that defines each tab's heading, dates, cost and filename)
-- `src/components/BusWankersPage.css` - Styling for the documentation page, including
-  the tab bar
-- `src/components/TestPage.jsx` - Functional mockup of the Glastonbury registration form
-- `src/components/TestPage.css` - Styling for the test page
-- `src/index.js` - Entry point for the React application
-- `src/api/autofillApi.js` - Client for the UploaderService autofill API (`/buswankers-api/api/autofill`)
-- `src/components/IngestBar.jsx` - The upload bar at the top of the page: upload a registration
-  workbook + password and every sale sheet is ingested into the live autofill files
-  (`POST /ingest`), after which the dropdown refreshes
-
-## Autofill files
-
-The autofill files are **no longer static assets in `public/`**. They live in
-UploaderService's `AutofillStore` on intelligence (`/srv/BusWankersSharp/Data/autofill`),
-are written by the upload bar at the top of the page, listed by `GET /api/autofill/files`
-(so the dropdown can mark a sale with nothing ingested as `(empty)` and disable its
-Download button), and served by `GET /api/autofill/files/{filename}`. holly's nginx
-rewrites the documented `https://longmanrd.net/buswankers/<name>_autofill.csv` Remote
-Import URLs onto that route (see `ops/nginx/buswankers.inc`), so the URLs users already
-have keep working. Any old `public/*.csv` copies are just dead weight now.
+- `src/App.jsx` - App shell: `Navigation` + `BusWankersPage`. No router - one page,
+  in-page anchors
+- `src/components/Navigation.jsx` - Top nav bar of anchor links to the page sections
+- `src/components/BusWankersPage.jsx` - Lays out the four sections in order and owns
+  the one bit of shared state: the map of files currently in the backend store
+  (fetched from `GET /files`, refreshed after an ingest)
+- `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
+- `src/components/DocumentationSection.jsx` / `.css` - Documentation with the
+  dropdown and Download button. `SALE_INFO` at the top of the file is the single
+  place that defines each sale's label, heading, dates, cost and filename - a new
+  sale sheet needs an entry here to appear in the dropdown (the backend handles any
+  sheet name without a code change)
+- `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
+- `src/components/UploadSection.jsx` / `.css` - One-off generate-and-download form
+  (`POST /sheets` then `POST /generate`)
+- `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
+  reading, `fetchStoredFiles`, `ingestWorkbook`, `downloadStoredFile`, `saveBlob`)
+- `src/index.js` - Entry point
+- `public/` - Static assets referenced by the page: the screenshots (`Hippies_1.png`,
+  `sync.png`, `formfield.png`, ...) and `DannyVid.mp4`. No autofill files belong here
 
 ## Deployment
 
-Deployed the same way as the RozeBowl React frontends: built and pushed to
-**holly** (192.168.0.252, nginx static front door), served behind
-`https://longmanrd.net/buswankers/`.
+Two halves, both wired into RozeBowlDeployDaemon's trunk pipeline on queeg (steps
+"deploy buswankers frontend" and "deploy buswankers backend"), so a signal on
+`rozebowl_deploy` deploys both. By hand:
 
-One-time setup on holly (creates the `/srv/BusWankersSharp` web root and the
-`/buswankers/` nginx location):
+- **Backend** (UploaderService, runs on intelligence):
+  `UploaderService/deploy-buswankers-backend.sh` - builds here, ships to
+  intelligence, runs `buswankers-remote-install.sh` there (which also creates the
+  autofill store directory).
+- **Frontend** (this app, served by holly's nginx at
+  `https://longmanrd.net/buswankers/`): `ReactApp/deploy-buswankers-frontend.sh` -
+  builds here, rsyncs `build/` to holly, and installs/wires both nginx includes
+  (`buswankers.inc`, `buswankers-api.inc`) on every run.
+
+Deploy the backend first when both have changed - the page is only as useful as
+the API behind it.
+
+One-time setup on holly (creates the `/srv/BusWankersSharp` web root):
 
 ```
 sudo ./ops/deploy/setup-holly-buswankers-links.sh   # run ON holly
 ```
 
-then add the include from `ops/nginx/buswankers.inc` to holly's
-`/etc/nginx/sites-available/longmanrd.net` server block (alongside the other
-`*.inc` includes) and `nginx -t && systemctl reload nginx`.
-
-Every deploy after that:
-
-```
-./deploy-buswankers-frontend.sh
-```
-
-This mirrors `deploy-breaktackle-frontend.sh` (build here, rsync the build to
-a staging dir on holly, remote `sudo` sync into place with `www-data`
-ownership, reload nginx) but trimmed down - no shared `@if/web-common`
-libraries to rebuild, no backend API, no per-environment `config.js`. One
-difference worth remembering: this is **Create React App**, not Vite, so the
-build output is `build/`, not `dist/`.
+The frontend deploy mirrors `deploy-breaktackle-frontend.sh` (build here, rsync the
+build to a staging dir on holly, remote `sudo` sync into place with `www-data`
+ownership, reload nginx) but trimmed down - no shared `@if/web-common` libraries to
+rebuild, no per-environment `config.js` (the API path is fixed, same-origin). One
+difference worth remembering: this is **Create React App**, not Vite, so the build
+output is `build/`, not `dist/`.
 
 `package.json`'s `"homepage": "/buswankers"` is what makes CRA emit correctly
--prefixed asset URLs (and is what `process.env.PUBLIC_URL` resolves from in
-the components) - keep it in sync if the public path ever changes. The app
-uses `HashRouter`, so `/buswankers/#/test` is the only client-side route
-nginx never needs to know about; the `try_files ... /buswankers/index.html`
-fallback in the `.inc` only matters for a direct hit that isn't a static
-asset.
-
-## Assets still needed
-
-The following binary assets are referenced by `BusWankersPage.jsx` but were not part of
-the source zip (they're presumably kept outside git) - copy them into `public/` before
-deploying:
-
-- `Hippies_1.png`
-- `sync.png`
-- `formfield.png`
-- `DannyVid.mp4`
-
-`public/bw_autofill.csv` (the Coach Tickets tab's download) also doesn't exist yet -
-only `g_autofill.csv` (last year's general sale data) came from the source zip. Until
-`bw_autofill.csv` is added, the Coach Tickets tab's download link and "enter this URL"
-instructions will 404.
-
-## Usage
-
-This application replaces the static HTML documentation page (`wankers.html`) with a
-more modern, React-based interface that provides the same information in a more
-interactive and responsive way, plus a working test page instead of a second static file.
+-prefixed asset URLs (and is what `process.env.PUBLIC_URL` resolves from in the
+components) - keep it in sync if the public path ever changes. The
+`try_files ... /buswankers/index.html` fallback in `buswankers.inc` only matters
+for a direct hit that isn't a static asset; the `*_autofill.csv` regex location in
+the same file must stay ahead of it in spirit (regex locations win over the prefix
+block regardless of order, but keep them together).
