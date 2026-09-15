@@ -55,11 +55,11 @@
           "dependencies": {
             "ExcelDataReader": {
               "target": "Package",
-              "version": "[3.9.0, )"
+              "version": "[3.6.0, )"
             },
             "ExcelDataReader.DataSet": {
               "target": "Package",
-              "version": "[3.9.0, )"
+              "version": "[3.6.0, )"
             }
           },
           "imports": [
@@ -411,11 +411,11 @@
           "dependencies": {
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
-              "version": "[10.0.12, )"
+              "version": "[8.0.4, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
-              "version": "[10.2.3, )"
+              "version": "[6.5.0, )"
             }
           },
           "imports": [

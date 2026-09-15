@@ -401,11 +401,11 @@
           "dependencies": {
             "ExcelDataReader": {
               "target": "Package",
-              "version": "[3.9.0, )"
+              "version": "[3.6.0, )"
             },
             "ExcelDataReader.DataSet": {
               "target": "Package",
-              "version": "[3.9.0, )"
+              "version": "[3.6.0, )"
             }
           },
           "imports": [

@@ -1,0 +1,65 @@
+# ============================================================================
+# buswankers-uploader.service.template — BusWankersSharp UploaderService unit
+# ============================================================================
+#
+# Canonical unit template for the UploaderService (spreadsheet -> autofill
+# generation) running on QUEEG (port 5061, self-hosted - the frontend's own
+# nginx reverse-proxies /buswankers-api/ to it, see ops/nginx/buswankers-api.inc).
+#
+# Models on the estate's static-template + sed-substitution pattern (see
+# Infoforum's RozeBowlDeployDaemon/systemd/rozebowldeploydaemon.service.template
+# and BreakTackle's deploy-one-bt-service.sh): this file is the single source
+# of truth, copied into /etc/systemd/system/ as buswankers-uploader.service by
+# deploy-buswankers-backend.sh with sed substitution of the User/
+# WorkingDirectory/ExecStart lines. No heredocs, no drift.
+#
+# Runs as hugh (this is a personal project, not part of the IFServices/
+# BTServices managed estates) - deploy-buswankers-backend.sh resolves the
+# actual account at install time the same way deploy-rozebowldeploydaemon.sh
+# does, so the value below is only the template default.
+#
+# Path placeholders (User, WorkingDirectory, ExecStart) are rewritten by
+# deploy-buswankers-backend.sh on install.
+
+[Unit]
+Description=BusWankersSharp UploaderService (spreadsheet -> autofill generation)
+After=network.target
+Documentation=https://longmanrd.net/buswankers/
+
+[Service]
+Type=simple
+
+# Path placeholders — rewritten by deploy-buswankers-backend.sh.
+User=hugh
+WorkingDirectory=/srv/BusWankersSharp/WebServices/UploaderService
+ExecStart=/usr/bin/dotnet /srv/BusWankersSharp/WebServices/UploaderService/UploaderService.dll
+
+# Restart configuration
+Restart=always
+RestartSec=10
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Security — plain webservice, no sudo shell-outs (unlike RozeBowlDeployDaemon),
+# so the standard hardening lines apply unlike that unit's deliberate carve-out.
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=buswankers-uploader
+
+# Environment. if-secrets is not currently required (the upload password and
+# group sizes live in appsettings.json, not secrets) but the leading dash
+# means the unit starts fine either way if this ever changes.
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+EnvironmentFile=-/etc/sysconfig/if-secrets
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

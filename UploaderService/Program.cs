@@ -38,6 +38,11 @@ app.UseCors(DevCorsPolicy);
 
 app.UseAuthorization();
 
+// Anonymous liveness probe, matching the estate's other webservices (e.g.
+// RozeBowlDeployDaemon's /health) - used by deploy-buswankers-backend.sh's
+// verify phase and available for any future monitoring.
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "UploaderService" }));
+
 app.MapControllers();
 
 app.Run();
