@@ -147,6 +147,30 @@ echo -e "${GREEN}[OK] $STORE_DIR ready ($STORE_COUNT autofill file(s) present)${
 echo ""
 
 # ----------------------------
+# Phase 3c: Firewall - open the service port to holly
+# ----------------------------
+# holly's nginx proxies /buswankers-api/ to this box on $SERVICE_PORT. Fedora's
+# firewalld drops that unless the port is opened to holly explicitly - the
+# same per-service rich rule Infoforum's deploy-one-MCPServer.sh provisions
+# (PROVISION_PUBLIC_PORT from MCP_PROXY_HOST). Until this existed, holly got a
+# 502 on every /buswankers-api/ request (2026-09-15). Idempotent.
+echo -e "${BLUE}>>> Phase 3c: Firewall${NC}"
+PROXY_HOST="${BW_PROXY_HOST:-192.168.0.252}"
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    FW_RULE="rule family=\"ipv4\" source address=\"$PROXY_HOST/32\" port port=\"$SERVICE_PORT\" protocol=\"tcp\" accept"
+    if firewall-cmd --permanent --query-rich-rule="$FW_RULE" >/dev/null 2>&1; then
+        echo -e "${GREEN}[OK] firewalld: $SERVICE_PORT/tcp from $PROXY_HOST already open${NC}"
+    else
+        firewall-cmd --permanent --add-rich-rule="$FW_RULE" >/dev/null
+        firewall-cmd --reload >/dev/null
+        echo -e "${GREEN}[OK] firewalld: opened $SERVICE_PORT/tcp from $PROXY_HOST${NC}"
+    fi
+else
+    echo -e "${YELLOW}    firewalld not running - nothing to open${NC}"
+fi
+echo ""
+
+# ----------------------------
 # Phase 4: systemd unit
 # ----------------------------
 echo -e "${BLUE}>>> Phase 4: Configure systemd${NC}"
