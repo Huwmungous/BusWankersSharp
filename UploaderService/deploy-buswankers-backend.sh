@@ -64,7 +64,12 @@ CONFIG_SERVICE_URL="${BW_CONFIG_SERVICE_URL:-https://longmanrd.net/config}"
 APP_DOMAIN="BusWankers"
 
 TARGET_HOST="${REMOTE_HOST:-intelligence}"
-TARGET_USER="${REMOTE_USER:-$USER}"
+# NOT $USER: this script runs on queeg, where the login is the AD-qualified
+# "hugh@longmanrd.infoforum.co.uk" account. The other Fedora boxes
+# (intelligence, holly, gambit) only know the plain local account "hugh" -
+# same reason ReactApp/deploy-buswankers-frontend.sh hardcodes DEPLOY_USER
+# instead of using $USER.
+TARGET_USER="${REMOTE_USER:-hugh}"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new)
 
 GREEN='\033[0;32m'
@@ -88,7 +93,7 @@ while [ $# -gt 0 ]; do
         --help|-h)
             echo "Usage: $0 [--target HOST] [--target-user USER] [--no-pull] [--no-start]"
             echo "  --target HOST      Box to deploy to. DEFAULT: intelligence."
-            echo "  --target-user USER SSH/sudo user on the target. DEFAULT: \$USER."
+            echo "  --target-user USER SSH/sudo user on the target. DEFAULT: hugh."
             echo "  --no-pull          Skip git pull (build from current state)"
             echo "  --no-start         Deploy only, don't start the service"
             exit 0
