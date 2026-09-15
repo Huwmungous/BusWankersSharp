@@ -38,6 +38,20 @@ using IFGlobal.WebServices;
 //   - AddHealthController wires GET /Health automatically - the old manual
 //     "/health" MapGet is gone; deploy-buswankers-backend.sh's verify phase
 //     now checks /Health to match.
+//   - SharedEstateService is true: this service always runs as ASP.NET
+//     "Production". IFGlobal's estate rule (2026-09-05) makes every member of
+//     DEV run as ASP.NET "Development" - intelligence hosts DEV, and its
+//     /etc/sysconfig/if-release stamps ASPNETCORE_ENVIRONMENT=Development
+//     into every unit that loads it (an EnvironmentFile= wins over the
+//     unit's own Environment= line, which is why the installer's
+//     "Production" setting never took). That rule is right for RozeBowl and
+//     friends; it is wrong for this service, which isn't a member of DEV at
+//     all - it's a standalone tool serving real users for a real ticket
+//     sale, and it happens to live on the same box. SharedEstateService is
+//     exactly IFGlobal's escape hatch for that (IFOllama and LoggerWebService
+//     use it for the same reason): Production behaviour, Production
+//     log-level default, and appsettings.Development.json never applies to
+//     a deployed copy.
 //
 // Deliberately no UseHttpsRedirection(): this service only ever listens on
 // plain HTTP behind holly's nginx, which terminates TLS for
@@ -51,7 +65,8 @@ var app = await ServiceFactory.CreateAsync(new ServiceFactoryOptions
     Description = "BusWankersSharp spreadsheet -> autofill-file generation",
     UseAuthentication = false,
     UseIFLogger = true,
-    ClientSecretEnvVar = "BUSWANKERS_CLIENTSECRET"
+    ClientSecretEnvVar = "BUSWANKERS_CLIENTSECRET",
+    SharedEstateService = true
 });
 
 app.Run();

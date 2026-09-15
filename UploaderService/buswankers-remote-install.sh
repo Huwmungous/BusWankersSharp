@@ -182,7 +182,11 @@ KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=15
 
-# Environment
+# Environment. NB if-release stamps ASPNETCORE_ENVIRONMENT=Development on
+# intelligence (it hosts the DEV estate) and an EnvironmentFile= wins over
+# the Environment= line below - so that line is a statement of intent only.
+# What actually keeps this service on Production is SharedEstateService in
+# Program.cs; if-release is still loaded for IF__Environment / IF__Version.
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 EnvironmentFile=-/etc/sysconfig/if-secrets
