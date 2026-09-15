@@ -1,0 +1,66 @@
+# ============================================================================
+# buswankers-uploader.service — REFERENCE COPY, not consumed directly
+# ============================================================================
+#
+# This is a documentation copy of the unit buswankers-remote-install.sh
+# heredoc-generates at /etc/systemd/system/buswankers-uploader.service on
+# whatever box actually hosts the service (intelligence). Nothing reads this
+# file at deploy time - if you change the shape of the unit, change it in
+# buswankers-remote-install.sh's Phase 4 and mirror the change here, the same
+# "keep two copies in step" discipline Infoforum's IFAutoFixDaemon
+# (ifautofixdaemon.service vs. deploy-ifautofixdaemon.sh's Phase 7) already
+# uses.
+#
+# Runs as the dedicated BusWankersServices system account (auto-created by
+# buswankers-remote-install.sh on first install - this service doesn't share
+# an identity with BreakTackle's BTServices or Infoforum's IFServices).
+#
+# Deployed to /srv/BusWankersSharp/WebServices/UploaderService on intelligence
+# (queeg only builds and ships it there - see deploy-buswankers-backend.sh).
+# Listens on the port IFGlobal.PortResolver assigns UploaderService (5038);
+# holly's nginx reverse-proxies /buswankers-api/ to it, see
+# ops/nginx/buswankers-api.inc.
+
+[Unit]
+Description=BusWankersSharp UploaderService (spreadsheet -> autofill generation)
+After=network-online.target
+Wants=network-online.target
+Documentation=https://longmanrd.net/buswankers/
+
+[Service]
+Type=simple
+User=BusWankersServices
+Group=BusWankersServices
+WorkingDirectory=/srv/BusWankersSharp/WebServices/UploaderService
+ExecStart=/usr/bin/dotnet /srv/BusWankersSharp/WebServices/UploaderService/UploaderService.dll
+
+# Restart configuration
+Restart=always
+RestartSec=10
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Environment. IF_ClientSecret for the "BusWankers" AppDomain lives under its
+# own name (BUSWANKERS_CLIENTSECRET) in if-secrets, not IF_CLIENTSECRET
+# (that's reserved for Infoforum-domain services) - see Program.cs's
+# ClientSecretEnvVar override.
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+EnvironmentFile=-/etc/sysconfig/if-secrets
+EnvironmentFile=-/etc/sysconfig/if-release
+
+# Security hardening - plain webservice, no shell-outs.
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=buswankers-uploader
+
+[Install]
+WantedBy=multi-user.target
