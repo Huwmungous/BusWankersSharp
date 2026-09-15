@@ -8,10 +8,18 @@ set -e
 # Usage:     ./deploy-buswankers-frontend.sh [--no-pull] [--no-build]
 #
 # Mirrors deploy-breaktackle-frontend.sh from the RozeBowl estate (same
-# build-here / rsync-to-holly / remote-activate pattern), trimmed down for a
-# standalone static app with no backend, no shared @if/web-common libraries,
-# and no per-environment config.js. NB this is Create React App, not Vite -
-# the build output directory is "build/", not "dist/".
+# build-here / rsync-to-holly / remote-activate pattern), trimmed down: no
+# shared @if/web-common libraries and no per-environment config.js (the app
+# talks to its backend at the fixed same-origin path /buswankers-api/, which
+# buswankers-api.inc proxies to UploaderService on intelligence - that half is
+# deployed by UploaderService/deploy-buswankers-backend.sh, not here). NB this
+# is Create React App, not Vite - the build output directory is "build/", not
+# "dist/".
+#
+# The autofill files themselves are NOT part of this build - they live in the
+# backend's AutofillStore and are served through the API; buswankers.inc
+# rewrites /buswankers/<name>_autofill.csv onto it. So a fresh frontend deploy
+# never changes which autofill files exist.
 #
 # Prerequisites:
 #   - Node.js, npm and rsync on this box; this repo cloned to $BW_REPO
@@ -261,7 +269,8 @@ echo "  Served at:   https://longmanrd.net/buswankers/"
 echo ""
 echo "  Quick check (from the LAN):"
 echo "    curl -sI http://$DEPLOY_HOST/buswankers/"
-echo "    curl -sI http://$DEPLOY_HOST/buswankers/g_autofill.csv"
+echo "    curl -s  https://longmanrd.net/buswankers-api/api/autofill/files      # what's in the store"
+echo "    curl -sI https://longmanrd.net/buswankers/g_autofill.csv              # proxied to the API; 404 until ingested"
 echo ""
 echo "  Reminder: package.json's \"homepage\" must stay \"/buswankers\" or CRA"
 echo "  will emit asset URLs for the wrong path."
