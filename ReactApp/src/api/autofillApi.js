@@ -8,12 +8,22 @@
 // PUBLIC_URL, since this API isn't served under /buswankers/ itself.
 export const API_BASE = '/buswankers-api/api/autofill';
 
+// UploaderService always answers with a JSON { error } body, so a non-JSON
+// error response didn't come from it - it came from holly's nginx (or
+// whatever sits in front), most often because /buswankers-api/ isn't being
+// proxied. Say so: "Request failed (404)" on its own sent a real
+// investigation down the wrong path once.
 export async function readErrorMessage(response, fallback) {
   try {
     const body = await response.json();
     if (body && body.error) return body.error;
   } catch {
-    // response wasn't JSON - fall back to the generic message
+    // response wasn't JSON - fall through
+  }
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return `${fallback} The reply came from the web server, not the upload service - ` +
+      `${API_BASE} isn't being proxied to it (check the buswankers-api nginx include on holly).`;
   }
   return fallback;
 }

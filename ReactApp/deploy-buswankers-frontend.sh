@@ -227,31 +227,94 @@ rm -rf "$STAGING"
 # server block if not already present there, idempotently - this used to be
 # a manual one-time copy step per the .inc files' own header comments; every
 # deploy now keeps holly's nginx config in sync with the repo instead.
-SITE_CONF="/etc/nginx/sites-available/longmanrd.net"
-if [ -d /etc/nginx/conf.d ] && [ -f "$SITE_CONF" ]; then
-    for INC in buswankers.inc buswankers-api.inc; do
-        install -m 0644 "$NGINX_STAGING/$INC" "/etc/nginx/conf.d/$INC"
-        if ! grep -q "include /etc/nginx/conf.d/$INC;" "$SITE_CONF"; then
-            if grep -q "include /etc/nginx/conf.d/config-webservice.inc;" "$SITE_CONF"; then
-                sed -i "/include \/etc\/nginx\/conf.d\/config-webservice.inc;/a\\    include /etc/nginx/conf.d/$INC;" "$SITE_CONF"
-                echo "    Wired 'include $INC;' into $SITE_CONF"
-            else
-                echo "    [WARN] Could not find an anchor include line in $SITE_CONF - add 'include /etc/nginx/conf.d/$INC;' to the longmanrd.net server block manually."
-            fi
-        fi
-    done
-else
-    echo "    [WARN] $SITE_CONF or /etc/nginx/conf.d not found - install the nginx includes manually (see ops/nginx/*.inc)."
+#
+# This phase is FATAL on any problem. An earlier version only warned when it
+# couldn't find an anchor line to hook the includes onto, then exited 0 -
+# so the deploy daemon reported "Deploy step OK" while every request to
+# /buswankers-api/ was a bare nginx 404 (the upload bar's "Request failed
+# (404)"). A frontend whose API isn't reachable is not a successful deploy.
+#
+# Wiring strategy: find whichever file under /etc/nginx holds the
+# `server_name ... longmanrd.net ...;` directive (sites-available, conf.d or
+# nginx.conf itself - Debian layouts vary) and insert the include directly
+# after that line, which is guaranteed to be inside the server block. No
+# dependency on any other service's include being present as an anchor.
+if [ ! -d /etc/nginx/conf.d ]; then
+    echo "    [ERROR] /etc/nginx/conf.d not found - is nginx installed on holly?" >&2
+    exit 1
 fi
+
+SITE_CONF="$(grep -lE '^\s*server_name\s[^;]*\blongmanrd\.net\b' \
+    /etc/nginx/sites-available/* /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /etc/nginx/nginx.conf 2>/dev/null \
+    | head -n 1 || true)"
+if [ -z "$SITE_CONF" ]; then
+    echo "    [ERROR] No nginx config under /etc/nginx declares 'server_name ... longmanrd.net' - cannot wire the includes." >&2
+    exit 1
+fi
+echo "    longmanrd.net server block: $SITE_CONF"
+
+SITE_BACKUP="$(mktemp /tmp/longmanrd.net.nginx.XXXXXX)"
+cp -p "$SITE_CONF" "$SITE_BACKUP"
+
+for INC in buswankers.inc buswankers-api.inc; do
+    install -m 0644 "$NGINX_STAGING/$INC" "/etc/nginx/conf.d/$INC"
+    if grep -qE "^\s*include\s+/etc/nginx/conf\.d/$INC;" "$SITE_CONF"; then
+        echo "    include $INC already wired"
+    else
+        # Insert after the FIRST server_name line naming longmanrd.net.
+        sed -i -E "0,/^(\s*)server_name\s[^;]*\blongmanrd\.net\b[^;]*;/s//&\n\1include \/etc\/nginx\/conf.d\/$INC;/" "$SITE_CONF"
+        if grep -qE "^\s*include\s+/etc/nginx/conf\.d/$INC;" "$SITE_CONF"; then
+            echo "    Wired 'include $INC;' into $SITE_CONF"
+        else
+            echo "    [ERROR] Failed to insert 'include /etc/nginx/conf.d/$INC;' into $SITE_CONF" >&2
+            cp -p "$SITE_BACKUP" "$SITE_CONF"
+            exit 1
+        fi
+    fi
+done
 rm -rf "$NGINX_STAGING"
 
-# Reload nginx if present (won't fail the deploy if it isn't installed yet).
-if command -v nginx >/dev/null 2>&1 && systemctl is-enabled nginx >/dev/null 2>&1; then
-    nginx -t && systemctl reload nginx && echo "    nginx reloaded"
-else
-    echo "    (nginx not active on holly yet - skipping reload)"
+# Validate and reload. A failed nginx -t restores the previous site config
+# (the .inc files stay installed - they're inert until included) and fails
+# the deploy, so a broken include can never be silently left in place.
+if ! command -v nginx >/dev/null 2>&1; then
+    echo "    [ERROR] nginx binary not found on holly" >&2
+    exit 1
 fi
+if ! nginx -t; then
+    echo "    [ERROR] nginx -t failed after wiring the BusWankers includes - restoring $SITE_CONF" >&2
+    cp -p "$SITE_BACKUP" "$SITE_CONF"
+    nginx -t || true
+    exit 1
+fi
+rm -f "$SITE_BACKUP"
+systemctl reload nginx && echo "    nginx reloaded"
 REMOTE_EOF
+
+# ----------------------------
+# Phase 4: Verify the API is reachable through holly
+# ----------------------------
+# The whole point of the nginx wiring above is that the page's fetch() calls
+# to /buswankers-api/ land on UploaderService. Prove it from outside - the
+# same path a browser takes - rather than trusting the reload. /Health is
+# unauthenticated and needs no store contents, so it's the right probe; a
+# 502 here means nginx is wired but intelligence:5038 isn't answering (check
+# buswankers-uploader there), a 404 means the include still isn't active.
+echo -e "${BLUE}>>> Phase 4: Verify API through holly${NC}"
+VERIFY_URL="${BW_VERIFY_URL:-https://longmanrd.net/buswankers-api/Health}"
+HCODE="000"
+for attempt in 1 2 3 4 5; do
+    HCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$VERIFY_URL" 2>/dev/null || echo "000")
+    [ "$HCODE" = "200" ] && break
+    sleep 2
+done
+if [ "$HCODE" = "200" ]; then
+    echo -e "${GREEN}[OK] $VERIFY_URL -> 200${NC}"
+else
+    echo -e "${RED}[ERROR] $VERIFY_URL -> HTTP $HCODE - the API is not reachable through holly's nginx.${NC}" >&2
+    exit 1
+fi
+echo ""
 
 echo -e "${GREEN}[OK] Frontend deployed to holly${NC}"
 echo ""
