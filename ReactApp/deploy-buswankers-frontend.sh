@@ -235,44 +235,82 @@ rm -rf "$STAGING"
 # (404)"). A frontend whose API isn't reachable is not a successful deploy.
 #
 # Wiring strategy: find whichever file under /etc/nginx holds the
-# `server_name ... longmanrd.net ...;` directive (sites-available, conf.d or
-# nginx.conf itself - Debian layouts vary) and insert the include directly
-# after that line, which is guaranteed to be inside the server block. No
-# dependency on any other service's include being present as an anchor.
+# `server_name ... longmanrd.net ...;` directive (on holly it's
+# /etc/nginx/conf.d/longmanrd.conf, not sites-available - layouts vary), then
+# pick the server BLOCK in it that has both that server_name and a
+# `listen ... 443` - the HTTPS block the browser actually hits. The first
+# server_name match in the file is the port-80 -> https redirect block, and
+# an include wired there is dead (that's exactly what happened on
+# 2026-09-15: "Wired ... nginx reloaded" followed by a 404).
+#
+# Any earlier buswankers include lines, wherever they landed, are removed
+# first and re-inserted in the right block, so this is idempotent and
+# self-correcting.
+#
+# buswankers-api.inc (the /buswankers-api/ proxy AND the
+# /buswankers/*_autofill.csv rewrite) is always wired. buswankers.inc (the
+# static /buswankers/ location) is wired only if the HTTPS block doesn't
+# already declare `location /buswankers/` inline - nginx refuses a duplicate
+# location, and holly's longmanrd.conf has it inline.
 if [ ! -d /etc/nginx/conf.d ]; then
     echo "    [ERROR] /etc/nginx/conf.d not found - is nginx installed on holly?" >&2
     exit 1
 fi
 
-SITE_CONF="$(grep -lE '^\s*server_name\s[^;]*\blongmanrd\.net\b' \
+SITE_CONF="$(grep -lE '^[[:space:]]*server_name[[:space:]][^;]*longmanrd\.net' \
     /etc/nginx/sites-available/* /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /etc/nginx/nginx.conf 2>/dev/null \
     | head -n 1 || true)"
 if [ -z "$SITE_CONF" ]; then
     echo "    [ERROR] No nginx config under /etc/nginx declares 'server_name ... longmanrd.net' - cannot wire the includes." >&2
     exit 1
 fi
-echo "    longmanrd.net server block: $SITE_CONF"
+echo "    longmanrd.net config: $SITE_CONF"
 
 SITE_BACKUP="$(mktemp /tmp/longmanrd.net.nginx.XXXXXX)"
 cp -p "$SITE_CONF" "$SITE_BACKUP"
 
 for INC in buswankers.inc buswankers-api.inc; do
     install -m 0644 "$NGINX_STAGING/$INC" "/etc/nginx/conf.d/$INC"
-    if grep -qE "^\s*include\s+/etc/nginx/conf\.d/$INC;" "$SITE_CONF"; then
-        echo "    include $INC already wired"
-    else
-        # Insert after the FIRST server_name line naming longmanrd.net.
-        sed -i -E "0,/^(\s*)server_name\s[^;]*\blongmanrd\.net\b[^;]*;/s//&\n\1include \/etc\/nginx\/conf.d\/$INC;/" "$SITE_CONF"
-        if grep -qE "^\s*include\s+/etc/nginx/conf\.d/$INC;" "$SITE_CONF"; then
-            echo "    Wired 'include $INC;' into $SITE_CONF"
-        else
-            echo "    [ERROR] Failed to insert 'include /etc/nginx/conf.d/$INC;' into $SITE_CONF" >&2
-            cp -p "$SITE_BACKUP" "$SITE_CONF"
-            exit 1
-        fi
-    fi
 done
 rm -rf "$NGINX_STAGING"
+
+# 1. Drop any existing buswankers include lines (wherever a previous run put them).
+sed -i -E '/^[[:space:]]*include[[:space:]]+\/etc\/nginx\/conf\.d\/buswankers(-api)?\.inc;[[:space:]]*$/d' "$SITE_CONF"
+
+# 2. Locate the HTTPS server block: prints "server_name-line block-start block-end".
+#    Comments are stripped before brace counting so a { in a comment can't
+#    unbalance it.
+BLOCK="$(awk '
+  BEGIN { depth=0; inserver=0; name=0; l443=0; start=0 }
+  {
+    line=$0
+    sub(/#.*$/, "", line)
+    if (depth==0 && line ~ /^[ \t]*server[ \t]*\{/) { inserver=1; name=0; l443=0; start=NR }
+    if (inserver) {
+      if (line ~ /^[ \t]*listen[ \t].*443/) l443=1
+      if (name==0 && line ~ /^[ \t]*server_name[ \t][^;]*longmanrd\.net/) name=NR
+    }
+    n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth+=n-m
+    if (inserver && depth==0) { if (l443 && name) { print name, start, NR; exit } inserver=0 }
+  }' "$SITE_CONF")"
+if [ -z "$BLOCK" ]; then
+    echo "    [ERROR] $SITE_CONF has no server block with both 'listen ... 443' and 'server_name ... longmanrd.net' - cannot wire the includes." >&2
+    cp -p "$SITE_BACKUP" "$SITE_CONF"
+    exit 1
+fi
+set -- $BLOCK
+NAME_LINE="$1"; BLOCK_START="$2"; BLOCK_END="$3"
+echo "    HTTPS server block: lines $BLOCK_START-$BLOCK_END (server_name at $NAME_LINE)"
+
+# 3. Insert after the server_name line of THAT block.
+sed -i "${NAME_LINE}a\\    include /etc/nginx/conf.d/buswankers-api.inc;" "$SITE_CONF"
+echo "    Wired 'include buswankers-api.inc;'"
+if sed -n "${BLOCK_START},${BLOCK_END}p" "$SITE_CONF" | grep -qE '^[[:space:]]*location[[:space:]]+/buswankers/[[:space:]]*\{'; then
+    echo "    'location /buswankers/' is declared inline in the HTTPS block - leaving it; buswankers.inc installed but not included"
+else
+    sed -i "${NAME_LINE}a\\    include /etc/nginx/conf.d/buswankers.inc;" "$SITE_CONF"
+    echo "    Wired 'include buswankers.inc;'"
+fi
 
 # Validate and reload. A failed nginx -t restores the previous site config
 # (the .inc files stay installed - they're inert until included) and fails
