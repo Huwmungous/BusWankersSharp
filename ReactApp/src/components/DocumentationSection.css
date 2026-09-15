@@ -20,9 +20,57 @@
 }
 
 .doc-section .sale-picker {
-  max-width: 320px;
+  max-width: 440px;
   margin: 0 auto 20px;
   text-align: center;
+}
+
+.doc-section .sale-picker-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.doc-section .sale-picker-row .form-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.doc-section .download-button {
+  flex: 0 0 auto;
+  background-color: #0066cc;
+  color: white;
+  padding: 0 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.doc-section .download-button:hover:not(:disabled) {
+  background-color: #0055aa;
+}
+
+.doc-section .download-button:disabled {
+  background-color: #99bbdd;
+  cursor: not-allowed;
+}
+
+.doc-section .sale-picker-note {
+  margin: 8px 0 0;
+  font-size: 0.85em;
+  color: #777;
+}
+
+.doc-section .sale-picker-error {
+  color: #a4231b;
+}
+
+.doc-section .link-disabled {
+  color: #999;
+  text-decoration: line-through;
+  cursor: not-allowed;
 }
 
 .doc-section .sale-picker label {

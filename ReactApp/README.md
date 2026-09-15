@@ -50,11 +50,21 @@ autofill functionality, and is updated for the **2027 Glastonbury General Sale**
 - `src/components/TestPage.jsx` - Functional mockup of the Glastonbury registration form
 - `src/components/TestPage.css` - Styling for the test page
 - `src/index.js` - Entry point for the React application
-- `public/bw_autofill.csv` - The autofill file served from the **Coach Tickets** tab
-  (regenerate each year from `CSVFromSpreadsheet`/`AutofillFromCSV` with the coach
-  group's registration numbers and postcodes before the coach + ticket package sale)
-- `public/g_autofill.csv` - The autofill file served from the **General Sale** tab
-  (regenerate the same way, with the general sale group, before the general sale)
+- `src/api/autofillApi.js` - Client for the UploaderService autofill API (`/buswankers-api/api/autofill`)
+- `src/components/IngestBar.jsx` - The upload bar at the top of the page: upload a registration
+  workbook + password and every sale sheet is ingested into the live autofill files
+  (`POST /ingest`), after which the dropdown refreshes
+
+## Autofill files
+
+The autofill files are **no longer static assets in `public/`**. They live in
+UploaderService's `AutofillStore` on intelligence (`/srv/BusWankersSharp/Data/autofill`),
+are written by the upload bar at the top of the page, listed by `GET /api/autofill/files`
+(so the dropdown can mark a sale with nothing ingested as `(empty)` and disable its
+Download button), and served by `GET /api/autofill/files/{filename}`. holly's nginx
+rewrites the documented `https://longmanrd.net/buswankers/<name>_autofill.csv` Remote
+Import URLs onto that route (see `ops/nginx/buswankers.inc`), so the URLs users already
+have keep working. Any old `public/*.csv` copies are just dead weight now.
 
 ## Deployment
 

@@ -1,22 +1,11 @@
 import React, { useState } from 'react';
+import { API_BASE, readErrorMessage, saveBlob } from '../api/autofillApi';
 import './UploadSection.css';
 
-// Sibling path to the frontend's own base (PUBLIC_URL=/buswankers) - proxied by
-// holly's nginx to the UploaderService backend running on queeg. See
-// ops/nginx/buswankers-api.inc. Fixed from the domain root rather than built off
-// PUBLIC_URL, since this API isn't served under /buswankers/ itself.
-const API_BASE = '/buswankers-api/api/autofill';
-
-async function readErrorMessage(response, fallback) {
-  try {
-    const body = await response.json();
-    if (body && body.error) return body.error;
-  } catch {
-    // response wasn't JSON - fall back to the generic message
-  }
-  return fallback;
-}
-
+// One-off "generate and download" - reads one sheet from a spreadsheet and hands
+// the resulting file straight back, WITHOUT touching the live autofill files.
+// To update those (what the dropdown at the top of the page offers, and what
+// the Remote Import URL serves), use the upload bar at the top instead.
 const UploadSection = () => {
   const [password, setPassword] = useState('');
   const [file, setFile] = useState(null);
@@ -107,14 +96,7 @@ const UploadSection = () => {
       const filename = match ? match[1] : `${selectedSheet}_autofill.csv`;
       const groupCount = response.headers.get('X-Group-Count');
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      saveBlob(blob, filename);
 
       setGenStatus('done');
       setGenMessage(
@@ -129,8 +111,8 @@ const UploadSection = () => {
   return (
     <section className="upload-section" id="upload-section" aria-label="Generate an autofill file from a spreadsheet">
       <div className="container">
-        <h2>Generate an Autofill File</h2>
-        <h3>Upload a registration spreadsheet, pick a sale, get back the autofill file</h3>
+        <h2>Generate a One-off Autofill File</h2>
+        <h3>Upload a registration spreadsheet, pick a sale, get back the autofill file - without changing the live files</h3>
 
         <form onSubmit={handleCheck}>
           <div className="form-group">
@@ -195,8 +177,10 @@ const UploadSection = () => {
           "URL" - checking the spreadsheet lists whichever sheets this particular file
           actually has. Registrants are grouped by the letter in their "Group" column;
           a sheet with no letters yet falls back to groups of 6 from the top. The
-          downloaded file still needs to be added to <code>ReactApp/public/</code> and
-          redeployed before it's live in the dropdown above.
+          downloaded file is yours to keep - it does <em>not</em> replace the live
+          autofill file for that sale. To do that, use the upload bar at the{' '}
+          <a href="#ingest-bar">top of the page</a>, which ingests every sale sheet
+          in the workbook at once.
         </h4>
       </div>
     </section>
