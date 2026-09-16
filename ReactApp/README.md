@@ -25,12 +25,28 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
    the other tabs refresh.
-2. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
-   (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), each with
-   its own key dates, cost info where known, and the Remote Import URL to paste into
-   AutoFill Options. A sale with nothing ingested yet reads `(empty)`; the
-   **Download** button next to the dropdown (and the "this link" download in the
-   text) is disabled for it.
+2. **Documentation** (`DocumentationSection`) - the landing tab. Pick a sale
+   (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo) and it
+   lists that sale's groups, each with a draggable **Glasto nnnn - Fill Group X**
+   bookmarklet, a *Try it on the Test Form* button, and (collapsed) a copy/paste
+   table of the group's reg numbers and postcodes. Key dates and cost info per
+   sale. The AutoFill Options / Lightning Autofill extension instructions (Remote
+   Import URL, Download button, screenshots, video) are kept in a collapsed
+   "prefer the extension?" section with a warning about its free plan's
+   10-fills-a-day cap. A sale with nothing ingested reads `(empty)` and explains.
+
+   **Why bookmarklets (2026-09-16):** Lightning Autofill's free plan is capped at
+   10 profile executions per day - anyone who tests or reloads on sale morning can
+   be locked out during the sale. A bookmarklet (`src/bookmarklet.js`) is a
+   bookmark whose address is JavaScript: clicked on the See Tickets registration
+   page it fills `registrations_N__RegistrationId` / `registrations_N__PostCode`
+   (matched by id/name, case-insensitively, with a class/positional fallback),
+   writing values through the native setter + input/change events so plain,
+   jQuery-validated and React forms all accept them. The group's data is embedded
+   in the bookmark, so nothing is fetched on the day. Bookmarklets are generated
+   client-side from the SAME autofill CSV the extension uses (parsed by
+   `parseAutofillCsv`), so there is no backend change and both routes stay in step.
+   Verified against a saved copy of the real 2023 `gfl/addregistrations` page.
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
    order) as of the last ingest. `nnnn` is the festival year, read from that tab's
@@ -123,15 +139,22 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
 - `src/components/RunningOrderSection.jsx` / `.css` - The collapsible
   *Glasto nnnn Running Order* list (`GET /running-order`)
-- `src/components/DocumentationSection.jsx` / `.css` - Documentation with the
-  dropdown and Download button. `SALE_INFO` at the top of the file is the single
-  place that defines each sale's label, heading, dates, cost and filename - a new
-  sale sheet needs an entry here to appear in the dropdown (the backend handles any
-  sheet name without a code change)
+- `src/bookmarklet.js` - `parseAutofillCsv` (AutoFill CSV -> groups), `FILL_SOURCE`
+  (the fill routine embedded in every bookmarklet), `bookmarkletHref` /
+  `bookmarkletSource` / `bookmarkletTitle`, and `runFillOnThisPage` (runs the same
+  routine against the Test Form tab)
+- `src/components/GroupFillPanel.jsx` / `.css` - The per-group cards on the
+  Documentation tab: draggable bookmarklet, Try-it button, copy/paste table
+- `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
+  dropdown, key dates, the bookmarklet steps, and the collapsed extension
+  instructions. `SALE_INFO` at the top of the file is the single place that
+  defines each sale's label, heading, dates, cost and filename - a new sale sheet
+  needs an entry here to appear in the dropdown (the backend handles any sheet
+  name without a code change)
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
-  reading, `fetchStoredFiles`, `fetchRunningOrder`, `ingestWorkbook`,
-  `downloadStoredFile`, `saveBlob`)
+  reading, `fetchStoredFiles`, `fetchRunningOrder`, `fetchAutofillGroups`,
+  `ingestWorkbook`, `downloadStoredFile`, `saveBlob`)
 - `src/index.js` - Entry point
 - `public/` - Static assets referenced by the page: the screenshots (`Hippies_1.png`,
   `sync.png`, `formfield.png`, ...) and `DannyVid.mp4`. No autofill files belong here

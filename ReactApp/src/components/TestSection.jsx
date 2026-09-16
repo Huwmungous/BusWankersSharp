@@ -67,10 +67,11 @@ const TestSection = ({ year }) => {
           9:00am BST on Sunday 4th October 2026.
         </p>
         <p className="test-hint">
-          With your autofill file imported into AutoFill Options, pick your group&rsquo;s
-          profile in the extension and the boxes below should fill themselves in. If they
-          don&rsquo;t fill on their own, click the AutoFill Options icon and choose your
-          group, then click <strong>Proceed</strong> to see what was filled in.
+          Click your <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark now (or use
+          <strong> Try it on the Test Form</strong> on the Documentation tab) and the boxes below
+          should fill themselves in, with a green bar saying how many people went in. Then click{' '}
+          <strong>Proceed</strong> to see exactly what the form holds. If you use the AutoFill
+          Options extension instead, choosing your group&rsquo;s profile there fills the same boxes.
         </p>
 
         <form ref={formRef} className="form-container" onSubmit={handleSubmit} autoComplete="off">
