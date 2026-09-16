@@ -165,6 +165,15 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/index.js` - Entry point
 - `public/` - Static assets referenced by the page: the screenshots (`Hippies_1.png`,
   `sync.png`, `formfield.png`, ...) and `DannyVid.mp4`. No autofill files belong here
+- `public/test_page.html` - a saved copy of the REAL `glastonbury.seetickets.com`
+  `gfl/addregistrations` page (captured 2023), served as-is at
+  `https://longmanrd.net/buswankers/test_page.html` so bookmarks and the extension
+  can be rehearsed against genuine markup. Sanitised: Google Tag Manager, Google
+  Translate, the reservation timer and the cookie banner removed; the pre-filled
+  values cleared; See Tickets' own inline scripts wrapped in try/catch (their CSS/JS
+  still load from `c.ststat.net`); the form posts nowhere - a capture-phase submit
+  handler shows what the boxes hold instead. Linked from the Test Form tab and both
+  sets of instructions.
 
 ## Deployment
 

@@ -327,9 +327,11 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
             <h3>Step 2 - try it out</h3>
             <p>
               Click <strong>Try it on the Test Form</strong> next to your group, or go to the <a href="#test-form">Test Form tab</a> and
-              click your new bookmark there - it&rsquo;s a copy of the real registration page. Your group&rsquo;s details should
-              appear in the boxes and a green bar should confirm how many people were filled in. Click <strong>Proceed</strong> on
-              the test form to see exactly what it holds. Do this well before the sale, not on the morning.
+              click your new bookmark there. For the closest possible rehearsal, open the{' '}
+              <a href={`${process.env.PUBLIC_URL}/test_page.html`} target="_blank" rel="noopener noreferrer">saved copy of the real See Tickets page</a>{' '}
+              and click your bookmark on that. Either way your group&rsquo;s details should appear in the boxes and a green bar
+              should confirm how many people were filled in; click <strong>Proceed</strong> to see exactly what the form holds.
+              Do this well before the sale, not on the morning.
             </p>
 
             <h3>Step 3 - on the day</h3>
