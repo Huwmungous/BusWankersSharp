@@ -310,9 +310,8 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
               </ul>
             </details>
             <p>
-              <strong>Or just grab your own group:</strong> each group below has a green <strong>Glasto {year} - Fill Group &hellip;</strong>{' '}
-              bookmark - <strong>drag it up onto your bookmarks bar</strong> (or right-click it and choose &ldquo;Bookmark link&rdquo; /
-              &ldquo;Add to favourites&rdquo;).
+              <strong>Or drag the green Glasto {year} - Fill Group&hellip; bookmarks onto your bookmarks bar</strong>{' '}
+              (or right-click one and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to favourites&rdquo;).
             </p>
 
             <GroupFillPanel
