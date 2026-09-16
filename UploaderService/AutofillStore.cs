@@ -13,6 +13,12 @@ namespace Autofills.UploaderService;
 /// file per sale, named by UploadServiceController.DownloadNameFor), and the
 /// service serves them back out via GET /api/autofill/files/{filename}.
 ///
+/// Alongside the autofill files the store keeps ONE non-csv file,
+/// running_order.json - the master roster ("Glasto nnnn" sheet) as read at
+/// the last ingest, which is where the page gets the festival year and the
+/// running-order list from. It is excluded from List() (that's autofill files
+/// only) and served by its own route.
+///
 /// The directory lives OUTSIDE the deploy path on purpose -
 /// buswankers-remote-install.sh wipes /srv/BusWankersSharp/WebServices/UploaderService
 /// on every deploy, so anything ingested would vanish with the next release
@@ -25,6 +31,7 @@ public sealed class AutofillStore
 {
     public const string ConfigKey = "AutofillStore:Directory";
     public const string DefaultDirectory = "/srv/BusWankersSharp/Data/autofill";
+    public const string RunningOrderFileName = "running_order.json";
 
     /// <summary>
     /// Exactly the shape DownloadNameFor produces - a lowercase slug plus the
@@ -88,6 +95,54 @@ public sealed class AutofillStore
         if (!IsSafeFileName(fileName))
             throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
 
+        var finalPath = await WriteAtomicAsync(fileName, content, ct);
+        return ToStored(new FileInfo(finalPath));
+    }
+
+    /// <summary>
+    /// Removes one autofill file - what an ingest does when the sale sheet for
+    /// it has been emptied, so the store never advertises a file for a sale
+    /// that no longer has anyone on it. True if a file was actually removed.
+    /// </summary>
+    public bool Delete(string fileName)
+    {
+        if (!IsSafeFileName(fileName))
+            throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
+
+        var path = Path.Combine(_directory, fileName);
+        if (!File.Exists(path))
+            return false;
+
+        File.Delete(path);
+        return true;
+    }
+
+    /// <summary>Full path of running_order.json, or null if no roster has been ingested.</summary>
+    public string? RunningOrderPath
+    {
+        get
+        {
+            var path = Path.Combine(_directory, RunningOrderFileName);
+            return File.Exists(path) ? path : null;
+        }
+    }
+
+    public Task SaveRunningOrderAsync(byte[] json, CancellationToken ct = default) =>
+        WriteAtomicAsync(RunningOrderFileName, json, ct);
+
+    /// <summary>Removes running_order.json (an emptied roster sheet clears it). True if there was one.</summary>
+    public bool DeleteRunningOrder()
+    {
+        var path = Path.Combine(_directory, RunningOrderFileName);
+        if (!File.Exists(path))
+            return false;
+
+        File.Delete(path);
+        return true;
+    }
+
+    private async Task<string> WriteAtomicAsync(string fileName, byte[] content, CancellationToken ct)
+    {
         System.IO.Directory.CreateDirectory(_directory);
 
         var finalPath = Path.Combine(_directory, fileName);
@@ -104,7 +159,7 @@ public sealed class AutofillStore
                 File.Delete(tempPath);
         }
 
-        return ToStored(new FileInfo(finalPath));
+        return finalPath;
     }
 
     private static StoredAutofillFile ToStored(FileInfo f) =>

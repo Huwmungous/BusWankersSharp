@@ -15,6 +15,9 @@ const Navigation = () => {
             <a href="#ingest-bar" className="nav-link">Update Files</a>
           </li>
           <li className="nav-item">
+            <a href="#running-order" className="nav-link">Running Order</a>
+          </li>
+          <li className="nav-item">
             <a href="#top" className="nav-link">Documentation</a>
           </li>
           <li className="nav-item">

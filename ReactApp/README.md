@@ -16,19 +16,26 @@ Top to bottom (all one page - the nav bar links are in-page anchors):
 
 1. **Upload bar** (`IngestBar`) - choose a registration workbook, enter the shared
    password, click *Upload & Ingest*. Every sale sheet in the workbook is generated
-   and written into the live autofill files in one go; per-sheet outcomes are shown
-   and the dropdown below refreshes.
-2. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
+   and written into the live autofill files in one go (a sale sheet that has been
+   **emptied** removes its file - the spreadsheet is the source of truth); the
+   roster sheet is read into the running order; per-sheet outcomes are shown and
+   the sections below refresh.
+2. **Running order** (`RunningOrderSection`) - a collapsible *Glasto nnnn Running
+   Order* list: everyone on the workbook's `Glasto nnnn` roster tab (reg number +
+   name, surname order) as of the last ingest. `nnnn` is the festival year, read
+   from that tab's name, and is what every other "2027"-style mention on the page
+   uses (`src/festival.js` holds the fallback for a store with no roster yet).
+3. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), each with
    its own key dates, cost info where known, and the Remote Import URL to paste into
    AutoFill Options. A sale with nothing ingested yet reads `(empty)`; the
    **Download** button next to the dropdown (and the "this link" download in the
    text) is disabled for it.
-3. **Test form** (`TestSection`) - a mockup of the Glastonbury registration form with
+4. **Test form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
    6 people per group, matching `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so
    the extension's profile can be tested end-to-end before the real sale.
-4. **Generate a one-off file** (`UploadSection`) - upload a spreadsheet, pick one
+5. **Generate a one-off file** (`UploadSection`) - upload a spreadsheet, pick one
    sale sheet, get that sale's autofill file straight back as a download. This does
    **not** touch the live files - it's for checking a spreadsheet or handing a file
    to someone directly. Use the upload bar at the top to publish.
@@ -58,6 +65,7 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 | `POST /ingest`               | password | upload bar - every sale sheet -> the store          |
 | `GET  /files`                | none     | dropdown - which files exist, size, last modified  |
 | `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
+| `GET  /running-order`        | none     | running order list + festival year (404 until ingested) |
 | `POST /sheets`, `POST /generate` | password | one-off generate section                       |
 
 Two ways a user gets a file, both served by `GET /files/{filename}`:
@@ -103,7 +111,11 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/BusWankersPage.jsx` - Lays out the four sections in order and owns
   the one bit of shared state: the map of files currently in the backend store
   (fetched from `GET /files`, refreshed after an ingest)
+- `src/festival.js` - `DEFAULT_YEAR`, the fallback festival year when no roster
+  has been ingested
 - `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
+- `src/components/RunningOrderSection.jsx` / `.css` - The collapsible
+  *Glasto nnnn Running Order* list (`GET /running-order`)
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation with the
   dropdown and Download button. `SALE_INFO` at the top of the file is the single
   place that defines each sale's label, heading, dates, cost and filename - a new
