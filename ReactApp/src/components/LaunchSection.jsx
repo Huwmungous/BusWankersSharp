@@ -89,8 +89,10 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 // obvious what the window is and nobody closes it by mistake.
 const holdingPageHtml = (when, url, rehearsal) => `<!doctype html><html><head><meta charset="utf-8"><title>Bus Wankers launch window - ${escapeHtml(when)}</title>
 <style>body{font-family:Arial,sans-serif;background:${rehearsal ? '#6d4c00' : '#1b5e20'};color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
-h1{font-size:1.6em;margin:0 0 .4em}p{margin:.3em 0;font-size:1.1em}code{font-size:.9em;opacity:.85}</style></head>
-<body><div><h1>Bus Wankers launch window${rehearsal ? ' (rehearsal)' : ''}</h1><p>This window will jump to</p><p><code>${escapeHtml(url)}</code></p><p>at <strong>${escapeHtml(when)}</strong></p><p>Leave it open. Don't refresh it.</p></div></body></html>`;
+h1{font-size:1.6em;margin:0 0 .4em}p{margin:.3em 0;font-size:1.1em}code{font-size:.9em;opacity:.85}
+.nb{margin-top:1.2em;font-size:.95em;max-width:34em;background:rgba(255,255,255,.15);padding:.6em .9em;border-radius:6px}</style></head>
+<body><div><h1>Bus Wankers launch window${rehearsal ? ' (rehearsal)' : ''}</h1><p>This window will jump to</p><p><code>${escapeHtml(url)}</code></p><p>at <strong>${escapeHtml(when)}</strong></p><p>Leave it open. Don't refresh it.</p>
+<p class="nb"><strong>NB:</strong> Rehearse this at least once in case the website asks you to accept cookies - accept them then, so there's nothing to click through on the day.</p></div></body></html>`;
 
 const LaunchSection = ({ year }) => {
   const [{ config: initialConfig, imported }] = useState(() => loadConfig());
@@ -490,7 +492,11 @@ const LaunchSection = ({ year }) => {
                 <button type="button" className="launch-btn launch-btn-secondary launch-btn-rehearse" onClick={rehearse} disabled={!urlOk}>
                   Rehearse: jump in {REHEARSAL_SECONDS} s
                 </button>
-                <span className="launch-field-hint">Rehearsal ignores the sale time and does the same thing {REHEARSAL_SECONDS} seconds from now - try it once in each browser.</span>
+                <span className="launch-field-hint">Rehearsal ignores the sale time and does the same thing {REHEARSAL_SECONDS} seconds from now.</span>
+                <p className="launch-nb">
+                  <strong>NB:</strong> Rehearse this at least once in every browser you&rsquo;ll use, in case the website asks you to accept cookies -
+                  accept them during the rehearsal so there&rsquo;s nothing to click through on the day.
+                </p>
               </>
             ) : (
               <button type="button" className="launch-btn launch-btn-disarm" onClick={disarm}>
@@ -528,7 +534,7 @@ const LaunchSection = ({ year }) => {
           <ol>
             <li>Fill in the settings above (once), then <em>Copy launch link</em>.</li>
             <li>Open each other browser on this computer, paste the link into its address bar and press Enter. Its settings fill in automatically. Do the same on every other computer, phone and tablet you have to hand.</li>
-            <li>In each browser, check the clock card says it&rsquo;s synced with NTP, then press <em>Rehearse</em> once and watch the launch window jump - the ticket page will say the sale isn&rsquo;t open yet, and that&rsquo;s fine. Close that window, then press <em>Arm this browser</em>.</li>
+            <li>In each browser, check the clock card says it&rsquo;s synced with NTP, then press <em>Rehearse</em> once and watch the launch window jump - the ticket page will say the sale isn&rsquo;t open yet, and that&rsquo;s fine. If it asks you to accept cookies, accept them now so it won&rsquo;t ask on the day. Close that window, then press <em>Arm this browser</em>.</li>
             <li>Arrange things so every armed browser and its launch window are visible, and leave them alone. At the moment every launch window goes to the ticket page.</li>
             <li>Then it&rsquo;s the usual drill: in whichever browser gets through, use its <em>Fill Group</em> bookmark (Documentation tab) to fill the form.</li>
           </ol>

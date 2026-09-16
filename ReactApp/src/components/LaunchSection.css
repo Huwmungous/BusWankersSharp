@@ -254,6 +254,16 @@
   margin: 6px 0 2px;
 }
 
+.launch .launch-nb {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 4px;
+  color: #6d4c00;
+  font-size: 0.9em;
+}
+
 .launch .launch-armed-box {
   margin-top: 12px;
   padding: 10px 14px;
