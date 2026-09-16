@@ -13,6 +13,12 @@
 //   leadMs  - fire this many ms BEFORE the sale time (default 200: the jump
 //             itself takes a page-load, so leaving a little early lands the
 //             request at the ticket site on the moment rather than after it)
+//   staggerMs - each arm draws a random delay in [0, staggerMs] and fires
+//             that much AFTER lead-adjusted moment, so several browsers on
+//             one connection don't all hit the site in the same instant
+//             (a per-IP burst threshold on the site's firewall is the only
+//             plausible way a household's browsers could hurt each other).
+//             0 disables it.
 
 export const STORAGE_KEY = 'buswankers.launch.v2';
 // v1 stored leadMs 0 by default; v2 defaults to 200. A browser that still has
@@ -21,14 +27,16 @@ const LEGACY_STORAGE_KEY = 'buswankers.launch.v1';
 
 export const DEFAULT_URL = 'https://glastonbury.seetickets.com/';
 export const DEFAULT_LEAD_MS = 200;
+export const DEFAULT_STAGGER_MS = 300;
 
 export const DEFAULT_CONFIG = Object.freeze({
   url: DEFAULT_URL,
   saleAt: '',
   leadMs: DEFAULT_LEAD_MS,
+  staggerMs: DEFAULT_STAGGER_MS,
 });
 
-const QUERY_KEYS = { url: 'url', saleAt: 'saleAt', leadMs: 'lead' };
+const QUERY_KEYS = { url: 'url', saleAt: 'saleAt', leadMs: 'lead', staggerMs: 'stagger' };
 
 const clampLead = (v) => {
   if (v === undefined || v === null || v === '') return DEFAULT_LEAD_MS;
@@ -37,10 +45,18 @@ const clampLead = (v) => {
   return Math.max(-60000, Math.min(60000, Math.round(n)));
 };
 
+const clampStagger = (v) => {
+  if (v === undefined || v === null || v === '') return DEFAULT_STAGGER_MS;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return DEFAULT_STAGGER_MS;
+  return Math.max(0, Math.min(10000, Math.round(n)));
+};
+
 const sanitise = (raw) => ({
   url: typeof raw.url === 'string' && raw.url.trim() ? raw.url.trim() : DEFAULT_URL,
   saleAt: typeof raw.saleAt === 'string' ? raw.saleAt : '',
   leadMs: clampLead(raw.leadMs),
+  staggerMs: clampStagger(raw.staggerMs),
 });
 
 function readStorage() {
@@ -97,6 +113,7 @@ function readQuery() {
       url: params.has(QUERY_KEYS.url) ? params.get(QUERY_KEYS.url) : base.url,
       saleAt: params.has(QUERY_KEYS.saleAt) ? params.get(QUERY_KEYS.saleAt) : base.saleAt,
       leadMs: params.has(QUERY_KEYS.leadMs) ? params.get(QUERY_KEYS.leadMs) : base.leadMs,
+      staggerMs: params.has(QUERY_KEYS.staggerMs) ? params.get(QUERY_KEYS.staggerMs) : base.staggerMs,
     }),
   };
 }
@@ -135,5 +152,6 @@ export function buildLaunchLink(config) {
   url.searchParams.set(QUERY_KEYS.url, clean.url);
   if (clean.saleAt) url.searchParams.set(QUERY_KEYS.saleAt, clean.saleAt);
   url.searchParams.set(QUERY_KEYS.leadMs, String(clean.leadMs));
+  url.searchParams.set(QUERY_KEYS.staggerMs, String(clean.staggerMs));
   return url.toString();
 }

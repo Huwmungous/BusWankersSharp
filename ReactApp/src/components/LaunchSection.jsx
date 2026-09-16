@@ -102,7 +102,10 @@ const LaunchSection = ({ year }) => {
   const [syncError, setSyncError] = useState('');
   const [armed, setArmed] = useState(false);
   const [rehearsalTarget, setRehearsalTarget] = useState(null); // epoch ms while rehearsing, else null
-  const [fired, setFired] = useState(null); // { via, lateMs, how, rehearsal }
+  const [fired, setFired] = useState(null); // { via, lateMs, how, rehearsal, staggerMs }
+  // This browser's random stagger for the current arm, drawn from
+  // [0, config.staggerMs] when arming (see launch/config.js).
+  const [staggerDraw, setStaggerDraw] = useState(0);
   const [notice, setNotice] = useState(imported ? 'Settings taken from the launch link and saved in this browser.' : '');
   const [launchWindowOpen, setLaunchWindowOpen] = useState(false);
   const [, setTick] = useState(0);
@@ -119,7 +122,10 @@ const LaunchSection = ({ year }) => {
   const targetMs = rehearsing ? rehearsalTarget : saleMs;
   const urlOk = isHttpUrl(config.url);
   const nowMs = correctedNow(syncRef.current);
-  const remainingMs = targetMs != null ? targetMs - config.leadMs - nowMs : null;
+  // Lead minus this arm's stagger: the jump is leadMs early, then staggerDraw
+  // late, so several browsers on one line don't land in the same instant.
+  const effectiveLeadMs = config.leadMs - (armed ? staggerDraw : 0);
+  const remainingMs = targetMs != null ? targetMs - effectiveLeadMs - nowMs : null;
   const targetInFuture = remainingMs != null && remainingMs > 0;
   const saleInFuture = saleMs != null && saleMs - config.leadMs - nowMs > 0;
 
@@ -277,15 +283,15 @@ const LaunchSection = ({ year }) => {
         done = true;
       }
     }
-    console.debug(`[launch] FIRED via ${via}, ${lateMs.toFixed(1)} ms after the moment -> ${url} (${done ? how : 'this tab'})`);
-    setFired({ via, lateMs, how: done ? how : 'this tab', rehearsal });
+    console.debug(`[launch] FIRED via ${via}, ${lateMs.toFixed(1)} ms after the (lead ${config.leadMs} ms, stagger +${staggerDraw} ms) moment -> ${url} (${done ? how : 'this tab'})`);
+    setFired({ via, lateMs, how: done ? how : 'this tab', rehearsal, staggerMs: staggerDraw });
     setArmed(false);
     setRehearsalTarget(null);
     releaseWakeLock();
     if (!done) {
       window.location.href = url;
     }
-  }, [config.url, rehearsalTarget, releaseWakeLock]);
+  }, [config.url, config.leadMs, staggerDraw, rehearsalTarget, releaseWakeLock]);
 
   useEffect(() => {
     if (!armed || targetMs == null) return undefined;
@@ -294,7 +300,7 @@ const LaunchSection = ({ year }) => {
       targetMs,
       () => correctedNow(syncRef.current),
       fireLaunch,
-      { leadMs: config.leadMs },
+      { leadMs: effectiveLeadMs },
     );
 
     // Keep the offset fresh: every minute, and one last time just before.
@@ -310,10 +316,12 @@ const LaunchSection = ({ year }) => {
       clearInterval(resync);
       if (finalSync) clearTimeout(finalSync);
     };
-  }, [armed, targetMs, config.leadMs, fireLaunch, runSync]);
+  }, [armed, targetMs, effectiveLeadMs, fireLaunch, runSync]);
 
   const armFor = (whenMs, rehearsal) => {
     const opened = openLaunchWindow(whenMs, rehearsal);
+    const draw = config.staggerMs > 0 ? Math.round(Math.random() * config.staggerMs) : 0;
+    setStaggerDraw(draw);
     setRehearsalTarget(rehearsal ? whenMs : null);
     setFired(null);
     setNotice(opened
@@ -321,7 +329,7 @@ const LaunchSection = ({ year }) => {
       : 'The browser blocked the launch window - allow pop-ups for this site and arm again. Until then, this tab itself will jump at the moment.');
     setArmed(true);
     acquireWakeLock();
-    console.debug(`[launch] ${rehearsal ? 'REHEARSAL ' : ''}armed for ${formatLondon(whenMs)} (lead ${config.leadMs} ms), launch window ${opened ? 'open' : 'BLOCKED'}`);
+    console.debug(`[launch] ${rehearsal ? 'REHEARSAL ' : ''}armed for ${formatLondon(whenMs)} (lead ${config.leadMs} ms, stagger +${draw} of up to ${config.staggerMs} ms), launch window ${opened ? 'open' : 'BLOCKED'}`);
   };
 
   const arm = () => {
@@ -378,7 +386,13 @@ const LaunchSection = ({ year }) => {
     ? (sync.source === 'ntp' ? `NTP via ${sync.server}` : 'the server’s own clock (NTP unavailable!)')
     : '';
   const usingLocalClock = syncStatus === 'error' || (sync && sync.source !== 'ntp');
-  const jumpAt = targetMs != null ? targetMs - config.leadMs : null;
+  const jumpAt = targetMs != null ? targetMs - effectiveLeadMs : null;
+  const timingNote = () => {
+    const parts = [];
+    if (config.leadMs) parts.push(config.leadMs > 0 ? `${config.leadMs} ms early` : `${-config.leadMs} ms late`);
+    if (armed && staggerDraw) parts.push(`+${staggerDraw} ms stagger`);
+    return parts.length ? ` (${parts.join(', ')})` : '';
+  };
 
   return (
     <section className="launch" aria-label={title}>
@@ -432,6 +446,20 @@ const LaunchSection = ({ year }) => {
               />
               <span className="launch-field-hint">200 is the default: the jump takes a page-load, so leaving a touch early lands on the moment. 0 = exactly on it.</span>
             </label>
+            <label className="launch-field launch-field-inline">
+              <span>Random stagger up to (ms)</span>
+              <input
+                type="number"
+                min="0"
+                max="10000"
+                step="50"
+                value={config.staggerMs}
+                onChange={(e) => updateConfig({ staggerMs: e.target.value })}
+              />
+              <span className="launch-field-hint">
+                Each browser you arm picks its own random delay up to this, so several browsers on one connection don&rsquo;t all hit the site in the same instant. 0 = off.
+              </span>
+            </label>
             <div className="launch-link-row">
               <button type="button" className="launch-btn" onClick={copyLink} disabled={!urlOk}>
                 {copied ? 'Copied!' : 'Copy launch link'}
@@ -476,7 +504,7 @@ const LaunchSection = ({ year }) => {
                 <div className="launch-countdown-value">{formatCountdown(remainingMs)}</div>
                 <div className="launch-clock-caption">
                   {rehearsing ? 'until the REHEARSAL jump' : (targetInFuture ? 'until the jump' : 'the sale time has passed')}
-                  {config.leadMs ? ` (${config.leadMs > 0 ? `${config.leadMs} ms early` : `${-config.leadMs} ms late`})` : ''}
+                  {timingNote()}
                 </div>
               </div>
             )}
@@ -507,7 +535,7 @@ const LaunchSection = ({ year }) => {
             {armed && (
               <div className={`launch-armed-box${rehearsing ? ' launch-armed-box-rehearsal' : ''}`}>
                 <p><strong>{rehearsing ? 'Rehearsal armed.' : 'Armed.'}</strong> The launch window will go to<br />
-                  <code>{config.url}</code><br />at {formatLondonClock(jumpAt)} ({formatLondon(jumpAt)}).</p>
+                  <code>{config.url}</code><br />at {formatLondonClock(jumpAt)} ({formatLondon(jumpAt)}){timingNote()}.</p>
                 {!launchWindowOpen && (
                   <p className="launch-error">
                     <strong>The launch window is closed.</strong> Disarm and arm again to open a new one - otherwise this tab itself will jump at the moment.
@@ -522,7 +550,8 @@ const LaunchSection = ({ year }) => {
             )}
             {fired && (
               <p className="launch-fired">
-                {fired.rehearsal ? 'Rehearsal jumped' : 'Jumped'} via {fired.via} into {fired.how}, {fired.lateMs.toFixed(0)} ms after the moment.
+                {fired.rehearsal ? 'Rehearsal jumped' : 'Jumped'} via {fired.via} into {fired.how}, {fired.lateMs.toFixed(0)} ms after its moment
+                {fired.staggerMs ? ` (this browser's stagger was +${fired.staggerMs} ms)` : ''}.
                 {fired.rehearsal && ' Now arm for the real thing when you’re ready.'}
               </p>
             )}
