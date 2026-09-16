@@ -1,0 +1,298 @@
+.launch {
+  background-color: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 16px 20px 24px;
+  font-family: Arial, sans-serif;
+}
+
+.launch .launch-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.launch .launch-title {
+  margin: 0 0 6px;
+  font-size: 1.3em;
+  color: #333;
+}
+
+.launch .launch-blurb {
+  margin: 0 0 14px;
+  color: #555;
+  font-size: 0.95em;
+  max-width: 900px;
+}
+
+.launch .launch-notice {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  color: #6d4c00;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.launch .launch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.launch .launch-card {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 14px 16px 16px;
+  margin: 0;
+  min-width: 0;
+}
+
+.launch fieldset.launch-card:disabled {
+  opacity: 0.7;
+}
+
+.launch .launch-card legend,
+.launch .launch-card-title {
+  font-weight: bold;
+  color: #444;
+  font-size: 1.05em;
+  margin: 0 0 10px;
+  padding: 0 4px;
+}
+
+.launch .launch-muted {
+  color: #777;
+  font-weight: normal;
+  font-size: 0.9em;
+}
+
+.launch .launch-error {
+  color: #a94442;
+  font-size: 0.9em;
+}
+
+.launch .launch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+  color: #444;
+}
+
+.launch .launch-field input {
+  font-size: 1em;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.launch .launch-field-inline input {
+  width: 8em;
+}
+
+.launch .launch-field-hint {
+  color: #777;
+  font-size: 0.85em;
+}
+
+.launch .launch-field-error {
+  color: #a94442;
+  font-size: 0.85em;
+}
+
+.launch .launch-link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.launch .launch-link {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 0.8em;
+  padding: 5px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: #555;
+  background: #fafafa;
+}
+
+.launch .launch-btn {
+  font-size: 0.95em;
+  padding: 8px 14px;
+  border: 1px solid #0066cc;
+  background: #0066cc;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.launch .launch-btn:hover:not(:disabled) {
+  background: #0052a3;
+}
+
+.launch .launch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.launch .launch-btn-secondary {
+  background: white;
+  color: #0066cc;
+}
+
+.launch .launch-btn-secondary:hover:not(:disabled) {
+  background: #eef5fc;
+}
+
+.launch .launch-btn-link {
+  background: none;
+  border: none;
+  color: #0066cc;
+  text-decoration: underline;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.launch .launch-btn-arm {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px;
+  font-size: 1.2em;
+  font-weight: bold;
+  background: #2e7d32;
+  border-color: #2e7d32;
+}
+
+.launch .launch-btn-arm:hover:not(:disabled) {
+  background: #1b5e20;
+}
+
+.launch .launch-btn-disarm {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  font-size: 1.05em;
+  background: #c62828;
+  border-color: #c62828;
+}
+
+.launch .launch-btn-disarm:hover {
+  background: #8e0000;
+}
+
+.launch .launch-clock {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+
+.launch .launch-clock-now,
+.launch .launch-countdown-value {
+  font-family: "Courier New", monospace;
+  font-size: 2em;
+  font-weight: bold;
+  color: #222;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.launch .launch-clock-caption {
+  color: #777;
+  font-size: 0.85em;
+  margin-top: 2px;
+}
+
+.launch .launch-clock-warn .launch-clock-now {
+  color: #a94442;
+}
+
+.launch .launch-sync-detail {
+  font-size: 0.85em;
+  color: #555;
+  margin: 8px 0 10px;
+}
+
+.launch .launch-countdown {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+
+.launch .launch-countdown-armed .launch-countdown-value {
+  color: #2e7d32;
+}
+
+.launch .launch-countdown-past .launch-countdown-value {
+  color: #a94442;
+}
+
+.launch .launch-spares {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+
+.launch .launch-armed-box {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #1b5e20;
+}
+
+.launch .launch-armed-box p {
+  margin: 0 0 8px;
+}
+
+.launch .launch-armed-box code {
+  word-break: break-all;
+}
+
+.launch .launch-armed-box ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.launch .launch-fired {
+  margin-top: 12px;
+  font-weight: bold;
+  color: #2e7d32;
+}
+
+.launch .launch-how {
+  margin-top: 18px;
+  font-size: 0.92em;
+  color: #444;
+}
+
+.launch .launch-how summary {
+  cursor: pointer;
+  font-weight: bold;
+  color: #444;
+}
+
+.launch .launch-how summary:hover {
+  color: #0066cc;
+}
+
+.launch .launch-how ol {
+  padding-left: 22px;
+}
+
+.launch .launch-how li {
+  margin: 4px 0;
+}

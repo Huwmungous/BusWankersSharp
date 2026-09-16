@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import DocumentationSection from './DocumentationSection';
 import IngestBar from './IngestBar';
+import LaunchSection from './LaunchSection';
 import RunningOrderSection from './RunningOrderSection';
 import TestSection from './TestSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
@@ -8,10 +9,11 @@ import { DEFAULT_YEAR } from '../festival';
 import { useActiveTab } from '../tabs';
 import './BusWankersPage.css';
 
-// The site is one page with four tabs (see src/tabs.js): Update Files (upload
+// The site is one page with five tabs (see src/tabs.js): Update Files (upload
 // a spreadsheet to refresh the live autofill files), Documentation (the
 // landing tab - pick and download your autofill file), Running Order (who's
-// on this year's roster) and Test Form (a mockup of the registration form).
+// on this year's roster), Test Form (a mockup of the registration form) and
+// Launch (arm this browser to jump to the ticket page at the sale time).
 //
 // Every tab body stays mounted and is simply hidden when not selected, so
 // switching tabs never throws away what's in them - the upload bar's result
@@ -92,6 +94,9 @@ const BusWankersPage = () => {
       </div>
       <div {...tabProps('test-form')}>
         <TestSection year={year} />
+      </div>
+      <div {...tabProps('launch')}>
+        <LaunchSection year={year} />
       </div>
     </div>
   );

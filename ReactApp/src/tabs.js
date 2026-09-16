@@ -9,6 +9,7 @@ export const TABS = [
   { id: 'documentation', label: 'Documentation' },
   { id: 'running-order', label: 'Running Order' },
   { id: 'test-form', label: 'Test Form' },
+  { id: 'launch', label: 'Launch' },
 ];
 
 export const DEFAULT_TAB = 'documentation';
