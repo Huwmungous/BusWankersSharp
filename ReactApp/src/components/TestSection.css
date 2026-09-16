@@ -132,3 +132,51 @@
     font-size: 14px;
   }
 }
+
+.test-section .test-hint {
+  color: #555;
+  font-size: 0.95em;
+}
+
+.test-section .test-readout {
+  margin-top: 25px;
+  padding: 15px 20px;
+  background-color: #f0f7ff;
+  border: 1px solid #b3d1f0;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.test-section .test-readout h3 {
+  margin-top: 0;
+}
+
+.test-section .test-readout-note {
+  color: #555;
+  font-size: 0.9em;
+}
+
+.test-section .test-readout-empty {
+  color: #a4231b;
+}
+
+.test-section .test-readout-table {
+  border-collapse: collapse;
+  width: 100%;
+  background-color: white;
+}
+
+.test-section .test-readout-table th,
+.test-section .test-readout-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+}
+
+.test-section .test-readout-table th {
+  background-color: #e8f0f8;
+}
+
+.test-section .test-readout-mono {
+  font-family: monospace;
+}
