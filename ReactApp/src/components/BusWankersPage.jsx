@@ -13,7 +13,7 @@ import './BusWankersPage.css';
 // a spreadsheet to refresh the live autofill files), Documentation (the
 // landing tab - pick and download your autofill file), Running Order (who's
 // on this year's roster), Test Form (a mockup of the registration form) and
-// Launch (arm this browser to jump to the ticket page at the sale time).
+// Launcher (arm this browser to open the ticket page at the sale time).
 //
 // Every tab body stays mounted and is simply hidden when not selected, so
 // switching tabs never throws away what's in them - the upload bar's result
