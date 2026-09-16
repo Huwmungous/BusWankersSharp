@@ -132,7 +132,10 @@ export function scheduleAt(targetMs, getNow, onFire, { leadMs = 0, onTick } = {}
       if (fired) return;
       if (fireAt - getNow() <= 0) fire('worker');
     };
-    worker.postMessage(25);
+    // 5 ms ticks: in the first live rehearsal the main-thread poll was
+    // throttled (tab not focused) and the worker fired the jump - 19 ms late
+    // on a 25 ms tick. Workers aren't throttled, so a tight tick is cheap.
+    worker.postMessage(5);
   } catch (err) {
     // No workers (very old browser, or a blob: CSP) - the main thread is enough.
     console.debug('[launch] worker ticker unavailable:', err && err.message);

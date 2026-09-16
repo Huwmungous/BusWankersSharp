@@ -57,6 +57,14 @@ function readStorage() {
         // Carry over what was typed in; take the new default lead.
         const migrated = sanitise({ url: parsed.url, saleAt: parsed.saleAt, leadMs: DEFAULT_LEAD_MS });
         console.debug('[launch] migrated v1 settings to v2 (lead reset to default)');
+        // Persist under the new key now, so this runs once rather than on
+        // every load until something is edited.
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+          // read-only storage - fine, the in-memory copy is what matters
+        }
         return migrated;
       }
     }
