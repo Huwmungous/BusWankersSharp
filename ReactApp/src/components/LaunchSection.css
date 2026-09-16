@@ -249,12 +249,9 @@
   color: #a94442;
 }
 
-.launch .launch-spares {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 10px 0 4px;
+.launch .launch-card-arm .launch-field-hint {
+  display: block;
+  margin: 6px 0 2px;
 }
 
 .launch .launch-armed-box {
