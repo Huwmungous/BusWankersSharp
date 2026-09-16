@@ -13,6 +13,12 @@ obj/
 # Create React App (ReactApp) - deps and build output
 /ReactApp/node_modules/
 /ReactApp/build/
+# The lockfile is deliberately NOT tracked: queeg's deploy checkout carries its
+# own untracked copy, and a tracked one makes `git pull` there abort ("untracked
+# working tree files would be overwritten") - PR #20 broke both buswankers
+# deploy steps exactly that way when the Git MCP's npm build generated one and
+# workspace_commit swept it in. Ignoring it keeps the build from committing it.
+/ReactApp/package-lock.json
 
 # Local AutofillStore used by `dotnet run` (appsettings.Development.json)
 /UploaderService/autofill-store/
