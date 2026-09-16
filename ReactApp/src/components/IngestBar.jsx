@@ -37,16 +37,18 @@ const IngestBar = ({ onIngested }) => {
 
     try {
       const outcome = await ingestWorkbook(file, password);
-      const okCount = outcome.filter((r) => r.ok).length;
-      const failCount = outcome.length - okCount;
+      const okCount = outcome.filter((r) => r.status === 'ok').length;
+      const emptyCount = outcome.filter((r) => r.status === 'empty').length;
+      const failCount = outcome.filter((r) => r.status === 'failed').length;
+
+      const parts = [];
+      if (okCount) parts.push(`ingested ${okCount} sale${okCount === 1 ? '' : 's'}`);
+      if (emptyCount) parts.push(`${emptyCount} empty (left as ${emptyCount === 1 ? 'it was' : 'they were'})`);
+      if (failCount) parts.push(`${failCount} failed - see below`);
 
       setResults(outcome);
       setStatus(failCount === 0 ? 'done' : 'error');
-      setMessage(
-        failCount === 0
-          ? `Ingested ${okCount} sale${okCount === 1 ? '' : 's'} from ${file.name}.`
-          : `Ingested ${okCount} of ${outcome.length} sales from ${file.name} - see below for the sheet${failCount === 1 ? '' : 's'} that failed.`
-      );
+      setMessage(`${file.name}: ${parts.join(', ')}.`);
 
       // A fresh pick is a fresh run - clear the chosen file so the same
       // workbook can't be re-sent by accident with a stale selection.
@@ -57,7 +59,18 @@ const IngestBar = ({ onIngested }) => {
     } catch (err) {
       setStatus('error');
       setMessage(err.message || 'Could not reach the upload service.');
+      // "No sheet could be ingested" comes with the per-sheet reasons - show them.
+      if (Array.isArray(err.results) && err.results.length > 0) setResults(err.results);
     }
+  };
+
+  const resultClass = (r) =>
+    r.status === 'ok' ? 'ingest-result-ok' : r.status === 'empty' ? 'ingest-result-empty' : 'ingest-result-fail';
+
+  const resultDetail = (r) => {
+    if (r.status === 'ok') return ` (${r.groups} group${r.groups === 1 ? '' : 's'})`;
+    if (r.status === 'empty') return ' - empty sheet, nothing to ingest; existing file (if any) left alone';
+    return ` - ${r.error}`;
   };
 
   return (
@@ -100,11 +113,9 @@ const IngestBar = ({ onIngested }) => {
         {results.length > 0 && (
           <ul className="ingest-results">
             {results.map((r) => (
-              <li key={r.sheet} className={r.ok ? 'ingest-result-ok' : 'ingest-result-fail'}>
+              <li key={r.sheet} className={resultClass(r)}>
                 <strong>{r.sheet}</strong> → <code>{r.filename}</code>
-                {r.ok
-                  ? ` (${r.groups} group${r.groups === 1 ? '' : 's'})`
-                  : ` - ${r.error}`}
+                {resultDetail(r)}
               </li>
             ))}
           </ul>

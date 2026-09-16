@@ -71,7 +71,7 @@ public class UploadServiceController : ControllerBase
             var sheets = ExcelFileHelper.ListSaleSheets(stream, file.FileName);
 
             if (sheets.Count == 0)
-                return BadRequest(new { error = "No sale sheets found in this file (only 'Starting Lineup' / 'URL')." });
+                return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
 
             return Ok(new { sheets });
         }
@@ -149,16 +149,23 @@ public class UploadServiceController : ControllerBase
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
 
         // The workbook is read once per sheet (ListSaleSheets, then ReadSheetGroups
-        // for each), so buffer it once and rewind rather than re-opening the
-        // request body each time.
-        using var workbook = new MemoryStream();
-        await file.CopyToAsync(workbook, ct);
+        // for each), so buffer the bytes once. Each read gets its OWN MemoryStream
+        // over those bytes: ExcelDataReader disposes the stream it was given when
+        // the reader is disposed, so rewinding a single shared stream throws
+        // "Cannot access a closed Stream" on the second read - which made every
+        // sheet fail and the whole ingest come back as a 400 (2026-09-16).
+        byte[] workbookBytes;
+        using (var buffer = new MemoryStream())
+        {
+            await file.CopyToAsync(buffer, ct);
+            workbookBytes = buffer.ToArray();
+        }
 
         List<string> sheets;
         try
         {
-            workbook.Position = 0;
-            sheets = ExcelFileHelper.ListSaleSheets(workbook, file.FileName);
+            using var listStream = new MemoryStream(workbookBytes, writable: false);
+            sheets = ExcelFileHelper.ListSaleSheets(listStream, file.FileName);
         }
         catch (InvalidOperationException ex)
         {
@@ -170,7 +177,7 @@ public class UploadServiceController : ControllerBase
         }
 
         if (sheets.Count == 0)
-            return BadRequest(new { error = "No sale sheets found in this file (only 'Starting Lineup' / 'URL')." });
+            return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
 
         var results = new List<IngestResult>(sheets.Count);
         foreach (var sheetName in sheets)
@@ -179,30 +186,40 @@ public class UploadServiceController : ControllerBase
             var maxInAGroup = MaxInAGroupFor(sheetName);
             try
             {
-                workbook.Position = 0;
-                var groups = ExcelFileHelper.ReadSheetGroups(workbook, file.FileName, sheetName, maxInAGroup);
+                using var sheetStream = new MemoryStream(workbookBytes, writable: false);
+                var groups = ExcelFileHelper.ReadSheetGroups(sheetStream, file.FileName, sheetName, maxInAGroup);
                 var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup);
                 var stored = await _store.SaveAsync(filename, Encoding.UTF8.GetBytes(text), ct);
 
                 _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
                     sheetName, stored.Filename, groups.Count, stored.Size, file.FileName);
 
-                results.Add(new IngestResult(sheetName.Trim(), filename, true, groups.Count, null));
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Ok, groups.Count, null));
+            }
+            catch (EmptySheetException ex)
+            {
+                // A sale tab with its headings but nobody on it yet - the normal
+                // state of the Resale tabs until the resale is announced. Not an
+                // error, and it does NOT touch whatever file is already stored for
+                // that sale.
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Empty, 0, ex.Message));
             }
             catch (InvalidOperationException ex)
             {
                 // Deliberate, user-facing message from the reader - report it against
                 // this sheet and carry on with the next.
-                results.Add(new IngestResult(sheetName.Trim(), filename, false, 0, ex.Message));
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, ex.Message));
             }
             catch (Exception ex)
             {
                 _log.LogError(ex, "Ingest of sheet '{Sheet}' from {Upload} failed", sheetName, file.FileName);
-                results.Add(new IngestResult(sheetName.Trim(), filename, false, 0, "Failed to process this sheet: " + ex.Message));
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, "Failed to process this sheet: " + ex.Message));
             }
         }
 
-        if (results.All(r => !r.Ok))
+        // 400 only when nothing was ingested AND something actually failed; a
+        // workbook whose sale tabs are all still empty is a successful no-op.
+        if (results.All(r => r.Status != IngestStatus.Ok) && results.Any(r => r.Status == IngestStatus.Failed))
             return BadRequest(new { error = "No sheet could be ingested.", results });
 
         return Ok(new { results });
@@ -286,6 +303,16 @@ public class UploadServiceController : ControllerBase
         return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
     }
 
-    /// <summary>Per-sheet outcome of POST /ingest.</summary>
-    public sealed record IngestResult(string Sheet, string Filename, bool Ok, int Groups, string? Error);
+    /// <summary>Per-sheet outcome of POST /ingest. Serialised as the strings "Ok" / "Empty" / "Failed" (the frontend compares case-insensitively).</summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<IngestStatus>))]
+    public enum IngestStatus { Ok, Empty, Failed }
+
+    /// <summary>
+    /// Per-sheet outcome of POST /ingest. <c>Ok</c> is kept alongside <c>Status</c>
+    /// so the response stays backward compatible with the first frontend build.
+    /// </summary>
+    public sealed record IngestResult(string Sheet, string Filename, IngestStatus Status, int Groups, string? Error)
+    {
+        public bool Ok => Status == IngestStatus.Ok;
+    }
 }

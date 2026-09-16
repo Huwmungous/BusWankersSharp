@@ -173,9 +173,10 @@ const UploadSection = () => {
         {genStatus === 'done' && <p className="upload-status upload-success">{genMessage}</p>}
 
         <h4 className="upload-note">
-          Every sheet in the workbook is treated as a sale, except "Starting Lineup" and
-          "URL" - checking the spreadsheet lists whichever sheets this particular file
-          actually has. Registrants are grouped by the letter in their "Group" column;
+          Every sheet whose first row has "Group", "Reg Number" and "Postcode" headings is
+          treated as a sale (the master roster and the URL tab don't, so they're skipped) -
+          checking the spreadsheet lists whichever sheets this particular file actually
+          has. Registrants are grouped by the letter in their "Group" column;
           a sheet with no letters yet falls back to groups of 6 from the top. The
           downloaded file is yours to keep - it does <em>not</em> replace the live
           autofill file for that sale. To do that, use the upload bar at the{' '}

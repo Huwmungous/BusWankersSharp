@@ -6,6 +6,16 @@ namespace Autofills.Common
     /// <summary>One person's registration entry on a sheet.</summary>
     public record Registrant(string RegistrationId, string PostCode);
 
+    /// <summary>
+    /// A sale sheet that has its header row but no registrants under it yet - the
+    /// normal state of a sale tab before anyone has been put on it. Distinct from
+    /// a malformed sheet so callers can report "empty" rather than "failed".
+    /// </summary>
+    public sealed class EmptySheetException : InvalidOperationException
+    {
+        public EmptySheetException(string message) : base(message) { }
+    }
+
     /// <summary>One group of registrants, as found on (or sliced from) a sheet.</summary>
     public record RegistrationGroup(string GroupLabel, List<Registrant> Members);
 
@@ -57,7 +67,7 @@ namespace Autofills.Common
             }
 
             if (ordered.Count == 0)
-                throw new InvalidOperationException("No registrations found below the header row on this sheet.");
+                throw new EmptySheetException("No registrations found below the header row on this sheet.");
 
             bool anyLabelled = ordered.Any(o => o.GroupLabel != null);
 
@@ -109,12 +119,24 @@ namespace Autofills.Common
         }
 
         /// <summary>
+        /// True when row 0 carries the sale-sheet heading shape: "Group", "Reg
+        /// Number" and "Postcode" all present. Used by ExcelFileHelper to decide
+        /// which tabs are sales at all.
+        /// </summary>
+        public static bool HasSaleHeader(DataTable sheet)
+        {
+            var (headerRow, groupCol, _, _) = FindHeader(sheet);
+            return headerRow >= 0 && groupCol >= 0;
+        }
+
+        /// <summary>
         /// Row 0 always holds the headings - reads that row's cells to find the
         /// "Group", "Reg Number" and "Postcode" columns (case-insensitive) by name,
         /// rather than assuming fixed positions, since column order has varied
         /// between sheets ("Coach" has an extra "Depart" column "General" doesn't).
-        /// "Group" is optional; its absence just means every row on this sheet will
-        /// fall back to the slice-from-the-top convention.
+        /// ReadGroups tolerates a missing "Group" column (every row then falls back
+        /// to the slice-from-the-top convention), but HasSaleHeader requires it -
+        /// that's what tells a sale tab apart from the master roster.
         /// </summary>
         private static (int HeaderRow, int GroupCol, int RegCol, int PostcodeCol) FindHeader(DataTable sheet)
         {
