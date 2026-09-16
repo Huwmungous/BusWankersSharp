@@ -52,11 +52,21 @@ function normaliseIngestResult(r) {
   return { ...r, status, ok: status === 'ok' };
 }
 
-// POST /ingest -> per-sheet results. Throws with the server's message on a
-// non-2xx (wrong password, unreadable workbook, nothing ingested at all); when
-// the server included per-sheet results with that error (it does for "no sheet
-// could be ingested"), they're attached to the thrown Error as `results` so the
-// page can show WHICH sheets failed and why, rather than just a status code.
+// The roster half of an ingest response: status 'ok' | 'empty' | 'failed' |
+// 'skipped' (no roster sheet in the workbook), plus year/sheet/people when ok.
+function normaliseRunningOrderResult(r) {
+  if (!r) return null;
+  const status = r.status ? String(r.status).toLowerCase() : 'skipped';
+  return { ...r, status };
+}
+
+// POST /ingest -> { results, runningOrder }. `results` is the per-sale-sheet
+// list; `runningOrder` is the roster outcome (see normaliseRunningOrderResult).
+// Throws with the server's message on a non-2xx (wrong password, unreadable
+// workbook, nothing ingested at all); when the server included per-sheet
+// results with that error (it does for "no sheet could be ingested"), they're
+// attached to the thrown Error as `results` so the page can show WHICH sheets
+// failed and why, rather than just a status code.
 export async function ingestWorkbook(file, password) {
   const form = new FormData();
   form.append('file', file);
@@ -83,7 +93,25 @@ export async function ingestWorkbook(file, password) {
     throw err;
   }
   const body = await response.json();
-  return (body.results || []).map(normaliseIngestResult);
+  return {
+    results: (body.results || []).map(normaliseIngestResult),
+    runningOrder: normaliseRunningOrderResult(body.runningOrder),
+  };
+}
+
+// GET /running-order -> { year, sheet, generatedAt, entries: [{ regNumber,
+// firstName, lastName, name }] } from the last ingested roster sheet, or null
+// when nothing has been ingested yet (the server answers 404 for that, which
+// is a normal state rather than an error).
+export async function fetchRunningOrder() {
+  const response = await fetch(`${API_BASE}/running-order`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
+  }
+  const body = await response.json();
+  if (!body || typeof body.year !== 'number') return null;
+  return { ...body, entries: Array.isArray(body.entries) ? body.entries : [] };
 }
 
 // Public download URL for a stored autofill file (no password needed).

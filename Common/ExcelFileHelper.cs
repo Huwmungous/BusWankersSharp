@@ -31,7 +31,7 @@ namespace Autofills.Common
         /// </summary>
         private static bool IsSaleSheet(DataTable sheet)
         {
-            if (NonSaleSheetNames.Contains(sheet.TableName.Trim()))
+            if (NonSaleSheetNames.Contains(sheet.TableName.Trim()) || RosterReader.IsRosterSheetName(sheet.TableName))
                 return false;
 
             return SheetRegistrationReader.HasSaleHeader(sheet);
@@ -72,7 +72,7 @@ namespace Autofills.Common
             using var reader = OpenReader(excelStream, fileName);
             var ds = ReadDataSet(reader);
 
-            if (NonSaleSheetNames.Contains(sheetName.Trim()))
+            if (NonSaleSheetNames.Contains(sheetName.Trim()) || RosterReader.IsRosterSheetName(sheetName))
                 throw new InvalidOperationException($"'{sheetName}' isn't a sale sheet.");
 
             DataTable? sheet = null;
@@ -93,6 +93,19 @@ namespace Autofills.Common
             }
 
             return SheetRegistrationReader.ReadGroups(sheet, maxInAGroup);
+        }
+
+        /// <summary>
+        /// Opens an uploaded workbook and reads its master roster ("Glasto nnnn" /
+        /// "Starting Lineup") via RosterReader. Null when the workbook has no
+        /// roster sheet; EmptySheetException when it has one with nobody on it.
+        /// Same stream caveat as ListSaleSheets - the reader disposes the stream.
+        /// </summary>
+        public static Roster? ReadRoster(Stream excelStream, string fileName)
+        {
+            using var reader = OpenReader(excelStream, fileName);
+            var ds = ReadDataSet(reader);
+            return RosterReader.Read(ds);
         }
 
         private static IExcelDataReader OpenReader(Stream excelStream, string fileName)

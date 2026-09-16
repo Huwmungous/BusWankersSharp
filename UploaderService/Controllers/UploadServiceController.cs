@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Autofills.Common;
 using Microsoft.AspNetCore.Mvc;
@@ -17,10 +19,14 @@ namespace Autofills.UploaderService.Controllers;
 ///                        streamed straight back to the browser. Nothing touches disk.
 ///   2. POST /ingest    - file + password -> EVERY sale sheet in the workbook is
 ///                        generated and written into the AutofillStore, replacing
-///                        whatever was there for that sale. This is what the upload
-///                        button at the top of the documentation page calls, and it
-///                        is how the "live" autofill files get refreshed without a
-///                        commit + frontend redeploy.
+///                        whatever was there for that sale (and an EMPTIED sale
+///                        sheet removes the file that was there). This is what the
+///                        upload button at the top of the documentation page calls,
+///                        and it is how the "live" autofill files get refreshed
+///                        without a commit + frontend redeploy. The same ingest
+///                        reads the master roster ("Glasto nnnn") into
+///                        running_order.json, which is where the page gets the
+///                        festival year and the running-order list.
 ///
 /// And two ways out, deliberately NOT password-gated (they're what the AutoFill
 /// Options extension's Remote Import URL and the page's download button hit, and
@@ -28,6 +34,7 @@ namespace Autofills.UploaderService.Controllers;
 ///   GET /files             - what's in the store (filename, size, last modified),
 ///                            so the page can mark sales with no file as empty
 ///   GET /files/{filename}  - the file itself
+///   GET /running-order     - the roster from the last ingest (year + people), or 404
 ///
 /// Sits behind a shared password (see IsPasswordCorrect) - simple, deliberate gate
 /// against a stranger stumbling on the URL, not a real auth system. It's enforced
@@ -198,11 +205,30 @@ public class UploadServiceController : ControllerBase
             }
             catch (EmptySheetException ex)
             {
-                // A sale tab with its headings but nobody on it yet - the normal
-                // state of the Resale tabs until the resale is announced. Not an
-                // error, and it does NOT touch whatever file is already stored for
-                // that sale.
-                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Empty, 0, ex.Message));
+                // A sale tab with its headings but nobody on it - the normal state
+                // of the Resale tabs until the resale is announced, or a sale that
+                // has been cleared out. Not an error, but the spreadsheet is the
+                // source of truth: an empty sheet means NO autofill file for that
+                // sale, so any file previously stored for it is removed rather than
+                // left advertising last time's people (2026-09-16).
+                bool cleared;
+                try
+                {
+                    cleared = _store.Delete(filename);
+                }
+                catch (Exception delEx)
+                {
+                    _log.LogError(delEx, "Clearing {File} for emptied sheet '{Sheet}' failed", filename, sheetName);
+                    results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0,
+                        "The sheet is empty but the existing file could not be removed: " + delEx.Message));
+                    continue;
+                }
+
+                if (cleared)
+                    _log.LogInformation("Sheet '{Sheet}' is empty - removed {File} from the store (from {Upload})",
+                        sheetName, filename, file.FileName);
+
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Empty, 0, ex.Message, cleared));
             }
             catch (InvalidOperationException ex)
             {
@@ -217,12 +243,105 @@ public class UploadServiceController : ControllerBase
             }
         }
 
+        var runningOrder = await IngestRosterAsync(workbookBytes, file.FileName, ct);
+
         // 400 only when nothing was ingested AND something actually failed; a
         // workbook whose sale tabs are all still empty is a successful no-op.
         if (results.All(r => r.Status != IngestStatus.Ok) && results.Any(r => r.Status == IngestStatus.Failed))
-            return BadRequest(new { error = "No sheet could be ingested.", results });
+            return BadRequest(new { error = "No sheet could be ingested.", results, runningOrder });
 
-        return Ok(new { results });
+        return Ok(new { results, runningOrder });
+    }
+
+    /// <summary>
+    /// The roster half of an ingest. The "Glasto nnnn" sheet (or the older
+    /// "Starting Lineup") becomes running_order.json in the store; an emptied
+    /// roster sheet removes it, mirroring what an emptied sale sheet does to its
+    /// autofill file. A workbook with no roster sheet leaves whatever running
+    /// order is already stored alone - a sales-only workbook shouldn't wipe the
+    /// year off the page. Never throws: a roster problem is reported in the
+    /// result, not allowed to fail the sales that already went in.
+    /// </summary>
+    private async Task<RunningOrderResult> IngestRosterAsync(byte[] workbookBytes, string uploadName, CancellationToken ct)
+    {
+        Roster? roster;
+        try
+        {
+            using var rosterStream = new MemoryStream(workbookBytes, writable: false);
+            roster = ExcelFileHelper.ReadRoster(rosterStream, uploadName);
+        }
+        catch (EmptySheetException ex)
+        {
+            bool cleared;
+            try
+            {
+                cleared = _store.DeleteRunningOrder();
+            }
+            catch (Exception delEx)
+            {
+                _log.LogError(delEx, "Clearing the running order for an emptied roster sheet failed (from {Upload})", uploadName);
+                return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false,
+                    "The roster sheet is empty but the stored running order could not be removed: " + delEx.Message);
+            }
+
+            if (cleared)
+                _log.LogInformation("Roster sheet is empty - removed {File} from the store (from {Upload})",
+                    AutofillStore.RunningOrderFileName, uploadName);
+
+            return new RunningOrderResult(IngestStatus.Empty, null, null, 0, cleared, ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Reading the roster sheet from {Upload} failed", uploadName);
+            return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, "Failed to read the roster sheet: " + ex.Message);
+        }
+
+        if (roster == null)
+            return new RunningOrderResult(IngestStatus.Skipped, null, null, 0, false, "No 'Glasto nnnn' roster sheet in this workbook - the stored running order is unchanged.");
+
+        try
+        {
+            var document = new RunningOrderDocument(
+                roster.Year,
+                roster.SheetName,
+                DateTimeOffset.UtcNow,
+                roster.Entries.Select(e => new RunningOrderEntry(e.RegistrationId, e.FirstName, e.LastName, e.DisplayName)).ToList());
+
+            var json = JsonSerializer.SerializeToUtf8Bytes(document, RunningOrderJson);
+            await _store.SaveRunningOrderAsync(json, ct);
+
+            _log.LogInformation("Ingested roster sheet '{Sheet}' -> {File} (year {Year}, {People} people) from {Upload}",
+                roster.SheetName, AutofillStore.RunningOrderFileName, roster.Year, roster.Entries.Count, uploadName);
+
+            return new RunningOrderResult(IngestStatus.Ok, roster.Year, roster.SheetName, roster.Entries.Count, false, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Saving the running order from {Upload} failed", uploadName);
+            return new RunningOrderResult(IngestStatus.Failed, roster.Year, roster.SheetName, 0, false, "Failed to save the running order: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The roster from the last ingest - festival year plus everyone on the
+    /// "Glasto nnnn" sheet in name order. Public like the autofill files (it's
+    /// the same names and reg numbers those already carry). 404 until a workbook
+    /// with a roster sheet has been ingested. Cache-Control: no-cache so a fresh
+    /// ingest is what the page shows.
+    /// </summary>
+    [HttpGet("running-order")]
+    public IActionResult RunningOrder()
+    {
+        var path = _store.RunningOrderPath;
+        if (path == null)
+            return NotFound(new { error = "No roster sheet has been ingested yet." });
+
+        Response.Headers.CacheControl = "no-cache";
+        return PhysicalFile(path, "application/json");
     }
 
     /// <summary>What's in the store right now - the frontend uses this to mark empty sales.</summary>
@@ -317,16 +436,35 @@ public class UploadServiceController : ControllerBase
         return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
     }
 
-    /// <summary>Per-sheet outcome of POST /ingest. Serialised as the strings "Ok" / "Empty" / "Failed" (the frontend compares case-insensitively).</summary>
-    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<IngestStatus>))]
-    public enum IngestStatus { Ok, Empty, Failed }
+    /// <summary>
+    /// Per-sheet outcome of POST /ingest. Serialised as the strings "Ok" / "Empty" /
+    /// "Failed" / "Skipped" (the frontend compares case-insensitively). Skipped is
+    /// only ever used for the roster (workbook had no roster sheet).
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<IngestStatus>))]
+    public enum IngestStatus { Ok, Empty, Failed, Skipped }
 
     /// <summary>
     /// Per-sheet outcome of POST /ingest. <c>Ok</c> is kept alongside <c>Status</c>
     /// so the response stays backward compatible with the first frontend build.
+    /// <c>Cleared</c> is true for an Empty sheet whose previously stored file was
+    /// removed by this ingest.
     /// </summary>
-    public sealed record IngestResult(string Sheet, string Filename, IngestStatus Status, int Groups, string? Error)
+    public sealed record IngestResult(string Sheet, string Filename, IngestStatus Status, int Groups, string? Error, bool Cleared = false)
     {
         public bool Ok => Status == IngestStatus.Ok;
     }
+
+    /// <summary>Roster outcome of POST /ingest, alongside the per-sale results.</summary>
+    public sealed record RunningOrderResult(IngestStatus Status, int? Year, string? Sheet, int People, bool Cleared, string? Error);
+
+    /// <summary>What running_order.json holds - also the body of GET /running-order.</summary>
+    public sealed record RunningOrderDocument(int Year, string Sheet, DateTimeOffset GeneratedAt, List<RunningOrderEntry> Entries);
+
+    public sealed record RunningOrderEntry(string RegNumber, string FirstName, string LastName, string Name);
+
+    private static readonly JsonSerializerOptions RunningOrderJson = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+    };
 }

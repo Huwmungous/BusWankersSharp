@@ -2,12 +2,28 @@ import React, { useRef, useState } from 'react';
 import { ingestWorkbook } from '../api/autofillApi';
 import './IngestBar.css';
 
+// The roster outcome of an ingest rendered as one more row in the per-sheet
+// list, so the person uploading sees it alongside the sales it was read with.
+// Module-level (not inside the component) so it's initialised before any
+// handler that calls it - no temporal-dead-zone risk.
+const rosterAsResult = (ro) => ({
+  sheet: ro.sheet || 'Glasto nnnn (roster)',
+  filename: 'running_order.json',
+  status: ro.status,
+  groups: 0,
+  people: ro.people,
+  cleared: ro.cleared,
+  error: ro.error,
+  isRoster: true,
+});
+
 // The upload button at the very top of the page. Pick a registration
 // workbook, give the shared password, and every sale sheet in it is ingested
-// into the live autofill files in one go - the dropdown just below refreshes
-// itself off the result via onIngested. This is the "publish" path; the
-// generate-and-download form at the bottom of the page is the "just give me
-// the file" path and leaves the live files alone.
+// into the live autofill files in one go (an emptied sale sheet removes its
+// file), and the roster sheet becomes the running order - the sections just
+// below refresh themselves off the result via onIngested. This is the
+// "publish" path; the generate-and-download form at the bottom of the page is
+// the "just give me the file" path and leaves the live files alone.
 const IngestBar = ({ onIngested }) => {
   const [password, setPassword] = useState('');
   const [file, setFile] = useState(null);
@@ -36,18 +52,26 @@ const IngestBar = ({ onIngested }) => {
     setResults([]);
 
     try {
-      const outcome = await ingestWorkbook(file, password);
+      const { results: outcome, runningOrder } = await ingestWorkbook(file, password);
       const okCount = outcome.filter((r) => r.status === 'ok').length;
-      const emptyCount = outcome.filter((r) => r.status === 'empty').length;
+      const clearedCount = outcome.filter((r) => r.status === 'empty' && r.cleared).length;
+      const emptyCount = outcome.filter((r) => r.status === 'empty' && !r.cleared).length;
       const failCount = outcome.filter((r) => r.status === 'failed').length;
+      const rosterFailed = runningOrder && runningOrder.status === 'failed';
 
       const parts = [];
       if (okCount) parts.push(`ingested ${okCount} sale${okCount === 1 ? '' : 's'}`);
-      if (emptyCount) parts.push(`${emptyCount} empty (left as ${emptyCount === 1 ? 'it was' : 'they were'})`);
+      if (clearedCount) parts.push(`cleared ${clearedCount} emptied sale${clearedCount === 1 ? '' : 's'}`);
+      if (emptyCount) parts.push(`${emptyCount} empty (nothing to clear)`);
       if (failCount) parts.push(`${failCount} failed - see below`);
+      if (runningOrder) {
+        if (runningOrder.status === 'ok') parts.push(`running order for ${runningOrder.year} (${runningOrder.people} people)`);
+        else if (runningOrder.status === 'empty') parts.push(runningOrder.cleared ? 'running order cleared' : 'roster sheet empty');
+        else if (runningOrder.status === 'failed') parts.push('running order failed - see below');
+      }
 
-      setResults(outcome);
-      setStatus(failCount === 0 ? 'done' : 'error');
+      setResults(runningOrder ? [...outcome, rosterAsResult(runningOrder)] : outcome);
+      setStatus(failCount === 0 && !rosterFailed ? 'done' : 'error');
       setMessage(`${file.name}: ${parts.join(', ')}.`);
 
       // A fresh pick is a fresh run - clear the chosen file so the same
@@ -65,11 +89,18 @@ const IngestBar = ({ onIngested }) => {
   };
 
   const resultClass = (r) =>
-    r.status === 'ok' ? 'ingest-result-ok' : r.status === 'empty' ? 'ingest-result-empty' : 'ingest-result-fail';
+    r.status === 'ok' ? 'ingest-result-ok'
+      : r.status === 'empty' || r.status === 'skipped' ? 'ingest-result-empty'
+        : 'ingest-result-fail';
 
   const resultDetail = (r) => {
+    if (r.isRoster) {
+      if (r.status === 'ok') return ` (${r.people} ${r.people === 1 ? 'person' : 'people'}, in surname order)`;
+      if (r.status === 'empty') return r.cleared ? ' - roster sheet is empty; the stored running order has been removed' : ' - roster sheet is empty; nothing was stored to clear';
+      return ` - ${r.error}`;
+    }
     if (r.status === 'ok') return ` (${r.groups} group${r.groups === 1 ? '' : 's'})`;
-    if (r.status === 'empty') return ' - empty sheet, nothing to ingest; existing file (if any) left alone';
+    if (r.status === 'empty') return r.cleared ? ' - empty sheet; the existing file has been removed' : ' - empty sheet; nothing was stored to clear';
     return ` - ${r.error}`;
   };
 
@@ -113,7 +144,7 @@ const IngestBar = ({ onIngested }) => {
         {results.length > 0 && (
           <ul className="ingest-results">
             {results.map((r) => (
-              <li key={r.sheet} className={resultClass(r)}>
+              <li key={r.isRoster ? `roster:${r.sheet}` : r.sheet} className={resultClass(r)}>
                 <strong>{r.sheet}</strong> → <code>{r.filename}</code>
                 {resultDetail(r)}
               </li>

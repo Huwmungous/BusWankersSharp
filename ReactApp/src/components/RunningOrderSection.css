@@ -1,0 +1,81 @@
+.running-order {
+  background-color: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 10px 20px;
+  font-family: Arial, sans-serif;
+}
+
+.running-order .running-order-details {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.running-order .running-order-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  font-weight: bold;
+  color: #444;
+  list-style-position: inside;
+}
+
+.running-order .running-order-summary:hover {
+  color: #0066cc;
+}
+
+.running-order .running-order-title {
+  font-size: 1.05em;
+}
+
+.running-order .running-order-count {
+  font-weight: normal;
+  font-size: 0.9em;
+  color: #666;
+}
+
+.running-order .running-order-note {
+  margin: 8px 0 4px;
+  font-size: 0.9em;
+  color: #666;
+}
+
+.running-order .running-order-error {
+  color: #a94442;
+}
+
+.running-order .running-order-table {
+  border-collapse: collapse;
+  margin: 8px 0 12px;
+  font-size: 0.95em;
+  background-color: white;
+  border: 1px solid #e0e0e0;
+}
+
+.running-order .running-order-table th,
+.running-order .running-order-table td {
+  padding: 6px 14px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+.running-order .running-order-table th {
+  background-color: #f0f0f0;
+  color: #444;
+}
+
+.running-order .running-order-table tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.running-order .running-order-pos {
+  color: #888;
+  text-align: right;
+  width: 2.5em;
+}
+
+.running-order .running-order-reg {
+  font-family: monospace;
+  white-space: nowrap;
+}

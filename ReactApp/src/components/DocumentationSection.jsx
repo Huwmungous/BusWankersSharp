@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { downloadStoredFile, downloadUrlFor } from '../api/autofillApi';
+import { DEFAULT_YEAR } from '../festival';
 import './DocumentationSection.css';
 
 const pub = process.env.PUBLIC_URL;
@@ -11,11 +12,16 @@ const pub = process.env.PUBLIC_URL;
 // the dropdown decides whether a sale is populated or "(empty)". Coach and
 // General keep the specific dates/cost text that's actually known; the others
 // get generic text until Hugh gives us real detail for them.
+//
+// `heading` is a function of the festival year (which comes from the
+// ingested roster sheet, see BusWankersPage) so the page never hardcodes it;
+// the dates and costs are deliberately NOT - they're specific and need
+// editing by hand each year.
 const SALE_INFO = {
   Coach: {
     label: 'Coach Tickets',
     shortLabel: 'Coach + Ticket Package Sale',
-    heading: 'This is the 2027 Glastonbury Coach Ticket Autofill File',
+    heading: (year) => `This is the ${year} Glastonbury Coach Ticket Autofill File`,
     filename: 'coach_autofill.csv',
     dates: [
       'Registration deadline: 5:00pm BST, Friday 25th September 2026',
@@ -26,7 +32,7 @@ const SALE_INFO = {
   General: {
     label: 'General Sale',
     shortLabel: 'General Sale',
-    heading: 'This is the 2027 Glastonbury General Sale Autofill File',
+    heading: (year) => `This is the ${year} Glastonbury General Sale Autofill File`,
     filename: 'general_autofill.csv',
     dates: [
       'Registration deadline: 5:00pm BST, Friday 25th September 2026',
@@ -40,7 +46,7 @@ const SALE_INFO = {
   'Resale - Coach': {
     label: 'Resale - Coach',
     shortLabel: 'Coach Resale',
-    heading: 'This is the 2027 Glastonbury Coach Resale Autofill File',
+    heading: (year) => `This is the ${year} Glastonbury Coach Resale Autofill File`,
     filename: 'coach_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
     cost: null,
@@ -48,7 +54,7 @@ const SALE_INFO = {
   'Resale - General': {
     label: 'Resale - General',
     shortLabel: 'General Resale',
-    heading: 'This is the 2027 Glastonbury General Resale Autofill File',
+    heading: (year) => `This is the ${year} Glastonbury General Resale Autofill File`,
     filename: 'general_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
     cost: null,
@@ -56,7 +62,7 @@ const SALE_INFO = {
   Demo: {
     label: 'Demo',
     shortLabel: 'Demo Sale',
-    heading: 'This is the 2027 Glastonbury Demo Autofill File',
+    heading: (year) => `This is the ${year} Glastonbury Demo Autofill File`,
     filename: 'demo_autofill.csv',
     dates: ['For testing/demonstration only — not a real sale.'],
     cost: null,
@@ -73,7 +79,7 @@ const formatWhen = (iso) => {
 // nothing ingested yet - the dropdown says so, and the download button is
 // disabled for it. While the store is still loading (or unreachable) nothing
 // is known, so every sale is treated as empty rather than guessing.
-const DocumentationSection = ({ storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
+const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
   const [saleType, setSaleType] = useState('Coach');
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
@@ -137,11 +143,11 @@ const DocumentationSection = ({ storedFiles = new Map(), storeStatus = 'loading'
           {downloadStatus === 'error' && <p className="sale-picker-note sale-picker-error">{downloadError}</p>}
         </div>
 
-        <h1>{info.heading}</h1>
+        <h1>{info.heading(year)}</h1>
         <h2>Use this file to populate your Autofill Options</h2>
 
         <div className="key-dates">
-          <h3>Key Dates for the 2027 {info.shortLabel}</h3>
+          <h3>Key Dates for the {year} {info.shortLabel}</h3>
           <ul>
             {info.dates.map((d) => <li key={d}>{d}</li>)}
           </ul>
