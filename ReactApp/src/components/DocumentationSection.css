@@ -340,3 +340,45 @@
 .doc-section .doc-extension h3 {
   border-bottom-color: #0066cc;
 }
+
+/* Whole-sale bookmark folder download + import how-to */
+.doc-section .folder-download {
+  margin: 10px 0;
+}
+
+.doc-section .folder-download-button {
+  padding: 10px 20px;
+  background-color: #1a7f37;
+}
+
+.doc-section .folder-download-button:hover:not(:disabled) {
+  background-color: #156b2e;
+}
+
+.doc-section .folder-download-button:disabled {
+  background-color: #9fcfae;
+}
+
+.doc-section .import-howto {
+  margin: 8px 0 16px;
+  border: 1px solid #dfe3e8;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.doc-section .import-howto summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.doc-section .import-howto ul {
+  margin: 0;
+  padding: 0 16px 10px 32px;
+}
+
+.doc-section .import-howto li {
+  margin: 6px 0;
+  font-size: 0.93em;
+}

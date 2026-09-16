@@ -220,3 +220,54 @@ export function runFillOnThisPage(group) {
   const fn = new Function('M', 'L', FILL_SOURCE);
   fn(M, L);
 }
+
+// ---------------------------------------------------------------------------
+// A whole sale's bookmarks as an importable folder
+// ---------------------------------------------------------------------------
+
+const escapeHtml = (s) => String(s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+// The "Netscape bookmark file" format every browser imports (Chrome/Edge:
+// Bookmarks > Import bookmarks and settings > HTML file; Firefox: Library >
+// Import and Backup > Import Bookmarks from HTML; Safari: File > Import From >
+// Bookmarks HTML File). One folder, named `folderName`, holding a bookmark
+// per group. The folder is placed inside the file's "toolbar" folder
+// (PERSONAL_TOOLBAR_FOLDER) so browsers that honour it put it straight on
+// the bookmarks bar; the others land it in an "Imported" folder, from where
+// it can be dragged onto the bar - the instructions say so.
+//
+// The bookmarklet hrefs are percent-encoded (see bookmarkletHref), so they
+// contain no quotes or ampersands and are safe inside the HREF attribute.
+export function bookmarkFolderHtml(groups, folderName, year) {
+  const items = groups
+    .map((g) => `            <DT><A HREF="${bookmarkletHref(g)}">${escapeHtml(bookmarkletTitle(g, year))}</A>`)
+    .join('\n');
+  const stamp = Math.floor(Date.now() / 1000);
+  return `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 ADD_DATE="${stamp}" LAST_MODIFIED="${stamp}" PERSONAL_TOOLBAR_FOLDER="true">Bookmarks bar</H3>
+    <DL><p>
+        <DT><H3 ADD_DATE="${stamp}" LAST_MODIFIED="${stamp}">${escapeHtml(folderName)}</H3>
+        <DL><p>
+${items}
+        </DL><p>
+    </DL><p>
+</DL><p>
+`;
+}
+
+// "Glasto Coach Bookmarks" - the folder name Hugh asked for, per sale.
+export const bookmarkFolderName = (saleFolderLabel) => `Glasto ${saleFolderLabel} Bookmarks`;
+
+// A filename for the download: "Glasto Coach Bookmarks.html".
+export const bookmarkFolderFileName = (saleFolderLabel) => `${bookmarkFolderName(saleFolderLabel)}.html`;

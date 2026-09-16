@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
-import { downloadStoredFile, fetchAutofillGroups } from '../api/autofillApi';
+import { downloadStoredFile, fetchAutofillGroups, saveBlob } from '../api/autofillApi';
+import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
 import './DocumentationSection.css';
 
@@ -11,7 +12,8 @@ import './DocumentationSection.css';
 // UploadServiceController.DownloadNameFor produces for that sheet - that's how
 // the dropdown decides whether a sale is populated or "(empty)". Coach and
 // General keep the specific dates/cost text that's actually known; the others
-// get generic text until Hugh gives us real detail for them.
+// get generic text until Hugh gives us real detail for them. `folderLabel`
+// names the importable bookmark folder: "Glasto <folderLabel> Bookmarks".
 //
 // `heading` is a function of the festival year (which comes from the
 // ingested roster sheet, see BusWankersPage) so the page never hardcodes it;
@@ -21,6 +23,7 @@ const SALE_INFO = {
   Coach: {
     label: 'Coach Tickets',
     shortLabel: 'Coach + Ticket Package Sale',
+    folderLabel: 'Coach',
     heading: (year) => `${year} Glastonbury Coach Ticket Sale`,
     filename: 'coach_autofill.csv',
     dates: [
@@ -32,6 +35,7 @@ const SALE_INFO = {
   General: {
     label: 'General Sale',
     shortLabel: 'General Sale',
+    folderLabel: 'General',
     heading: (year) => `${year} Glastonbury General Sale`,
     filename: 'general_autofill.csv',
     dates: [
@@ -46,6 +50,7 @@ const SALE_INFO = {
   'Resale - Coach': {
     label: 'Resale - Coach',
     shortLabel: 'Coach Resale',
+    folderLabel: 'Coach Resale',
     heading: (year) => `${year} Glastonbury Coach Resale`,
     filename: 'coach_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
@@ -54,6 +59,7 @@ const SALE_INFO = {
   'Resale - General': {
     label: 'Resale - General',
     shortLabel: 'General Resale',
+    folderLabel: 'General Resale',
     heading: (year) => `${year} Glastonbury General Resale`,
     filename: 'general_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
@@ -62,6 +68,7 @@ const SALE_INFO = {
   Demo: {
     label: 'Demo',
     shortLabel: 'Demo Sale',
+    folderLabel: 'Demo',
     heading: (year) => `${year} Glastonbury Demo Sale`,
     filename: 'demo_autofill.csv',
     dates: ['For testing/demonstration only — not a real sale.'],
@@ -164,6 +171,15 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
     }
   };
 
+  // Every group's bookmark for this sale in one importable bookmarks file,
+  // as a folder named "Glasto <Sale> Bookmarks" (see bookmarkFolderHtml).
+  const folderName = bookmarkFolderName(info.folderLabel);
+  const downloadBookmarkFolder = () => {
+    if (!groups || groups.length === 0) return;
+    const html = bookmarkFolderHtml(groups, folderName, year);
+    saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel));
+  };
+
   const chooseMethod = (m) => {
     setMethod(m);
     try { window.localStorage.setItem(METHOD_KEY, m); } catch { /* per-browser convenience only */ }
@@ -259,13 +275,44 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
 
         {method === 'bookmark' && (
           <div className="doc-steps">
-            <h3>Step 1 - find your group and grab its bookmark</h3>
+            <h3>Step 1 - get the bookmarks into your browser</h3>
             <p>
-              Each group below has a green <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark. <strong>Drag it up onto your
-              browser&rsquo;s bookmarks bar</strong> (or right-click it and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to
-              favourites&rdquo;). Can&rsquo;t see a bookmarks bar? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
-              (<kbd>&#8984;</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it. The bookmark carries your group&rsquo;s
-              registration numbers and postcodes inside it, so on the day it needs nothing from this site.
+              <strong>Easiest: import the whole folder.</strong> The button below downloads a small file that adds a bookmarks
+              folder called <strong>{folderName}</strong> containing a bookmark for every group. Import it and you&rsquo;re done -
+              on the day, open the folder on your bookmarks bar and click your group. The bookmarks carry each group&rsquo;s
+              registration numbers and postcodes inside them, so on the day they need nothing from this site.
+            </p>
+            <p className="folder-download">
+              <button
+                type="button"
+                className="download-button folder-download-button"
+                onClick={downloadBookmarkFolder}
+                disabled={groupsStatus !== 'ready' || !groups || groups.length === 0}
+                title={groups && groups.length ? `Download ${bookmarkFolderFileName(info.folderLabel)}` : 'No groups loaded for this sale yet'}
+              >
+                Download &ldquo;{folderName}&rdquo;
+              </button>
+            </p>
+            <details className="import-howto">
+              <summary>How to import the folder (Chrome, Edge, Firefox, Safari)</summary>
+              <ul>
+                <li><strong>Chrome:</strong> menu <kbd>&#8942;</kbd> &rarr; Bookmarks and lists &rarr; Import bookmarks and settings &rarr;
+                  choose <em>Bookmarks HTML file</em> &rarr; pick the downloaded file. If you already had bookmarks, the folder appears
+                  inside an <em>Imported</em> folder on the bookmarks bar - drag <strong>{folderName}</strong> out onto the bar if you like.</li>
+                <li><strong>Edge:</strong> menu <kbd>&hellip;</kbd> &rarr; Favourites &rarr; <kbd>&hellip;</kbd> &rarr; Import favourites &rarr;
+                  <em>Favourites or bookmarks HTML file</em> &rarr; pick the file.</li>
+                <li><strong>Firefox:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> opens the Library &rarr; Import and Backup &rarr;
+                  Import Bookmarks from HTML&hellip; &rarr; pick the file. The folder lands on the Bookmarks Toolbar.</li>
+                <li><strong>Safari (Mac):</strong> File &rarr; Import From &rarr; Bookmarks HTML File&hellip; &rarr; pick the file; the folder
+                  appears under <em>Imported</em> in the sidebar - drag it to the Favourites bar.</li>
+                <li>Can&rsquo;t see a bookmarks bar at all? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
+                  (<kbd>&#8984;</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it.</li>
+              </ul>
+            </details>
+            <p>
+              <strong>Or just grab your own group:</strong> each group below has a green <strong>Glasto {year} - Fill Group &hellip;</strong>{' '}
+              bookmark - <strong>drag it up onto your bookmarks bar</strong> (or right-click it and choose &ldquo;Bookmark link&rdquo; /
+              &ldquo;Add to favourites&rdquo;).
             </p>
 
             <GroupFillPanel
@@ -290,7 +337,8 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
               <li>Be on <code>glastonbury.seetickets.com</code> <em>before</em> the sale opens and wait in the queue. Don&rsquo;t refresh,
                 and don&rsquo;t open extra tabs or devices - the festival says that can get you blocked.</li>
               <li>When the registration page appears (the one asking for &ldquo;Registration Number&rdquo; and &ldquo;Postcode&rdquo; for each
-                person), click your <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark once.</li>
+                person), open the <strong>{folderName}</strong> folder on your bookmarks bar and click your{' '}
+                <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark once.</li>
               <li>Check the boxes look right - the green bar tells you how many people were filled - then click <strong>Proceed</strong>.
                 You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
             </ol>
