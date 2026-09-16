@@ -102,6 +102,10 @@
   color: #a4231b;
 }
 
+.ingest-bar .ingest-result-empty {
+  color: #777;
+}
+
 .ingest-bar .ingest-results code {
   background-color: #eee;
   padding: 1px 5px;

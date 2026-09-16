@@ -44,8 +44,19 @@ export async function fetchStoredFiles() {
   return map;
 }
 
+// Normalise one per-sheet result from POST /ingest: status is one of
+// 'ok' | 'empty' | 'failed' (lower-cased here whatever casing the server's
+// enum serialiser used); older responses carried only an `ok` boolean.
+function normaliseIngestResult(r) {
+  const status = r.status ? String(r.status).toLowerCase() : (r.ok ? 'ok' : 'failed');
+  return { ...r, status, ok: status === 'ok' };
+}
+
 // POST /ingest -> per-sheet results. Throws with the server's message on a
-// non-2xx (wrong password, unreadable workbook, nothing ingested at all).
+// non-2xx (wrong password, unreadable workbook, nothing ingested at all); when
+// the server included per-sheet results with that error (it does for "no sheet
+// could be ingested"), they're attached to the thrown Error as `results` so the
+// page can show WHICH sheets failed and why, rather than just a status code.
 export async function ingestWorkbook(file, password) {
   const form = new FormData();
   form.append('file', file);
@@ -53,10 +64,26 @@ export async function ingestWorkbook(file, password) {
 
   const response = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: form });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
+    let results = [];
+    let message = `Request failed (${response.status}).`;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('json')) {
+      try {
+        const body = await response.json();
+        if (body && body.error) message = body.error;
+        if (body && Array.isArray(body.results)) results = body.results.map(normaliseIngestResult);
+      } catch {
+        // fall through with the generic message
+      }
+    } else {
+      message = await readErrorMessage(response, message);
+    }
+    const err = new Error(message);
+    err.results = results;
+    throw err;
   }
   const body = await response.json();
-  return body.results || [];
+  return (body.results || []).map(normaliseIngestResult);
 }
 
 // Public download URL for a stored autofill file (no password needed).

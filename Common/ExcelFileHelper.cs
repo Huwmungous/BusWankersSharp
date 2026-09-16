@@ -1,4 +1,4 @@
-﻿using ExcelDataReader;
+using ExcelDataReader;
 using System.Data;
 using System.Text;
 
@@ -8,18 +8,41 @@ namespace Autofills.Common
     {
         /// <summary>
         /// Sheets that are never a sale, whatever the workbook contains: the master
-        /// roster and the queue-URL scratchpad. Every other sheet is a sale, by
-        /// definition - the workbook's own sheet names ARE the list of sales, rather
-        /// than a fixed set of names this code has to know in advance. Compared
-        /// trimmed and case-insensitive, since the real "Starting Lineup" sheet has
-        /// been seen with a trailing space in its actual tab name.
+        /// roster and the queue-URL scratchpad. Compared trimmed and
+        /// case-insensitive, since the real "Starting Lineup" sheet has been seen
+        /// with a trailing space in its actual tab name.
+        ///
+        /// This list is only a fast path - the real test is the header row (see
+        /// IsSaleSheet). The 2027 workbook renamed the master roster "Glasto 2027",
+        /// which no fixed name list would have caught.
         /// </summary>
         private static readonly HashSet<string> NonSaleSheetNames =
             new(StringComparer.OrdinalIgnoreCase) { "Starting Lineup", "URL" };
 
         /// <summary>
+        /// A sale sheet is one whose header row has a "Group" column alongside
+        /// "Reg Number" and "Postcode". Every sale tab (Coach, General, Resale -
+        /// Coach, Resale - General, Demo) has that shape; the master roster has
+        /// "Reg Number" and "Postcode" too but keys on "Going 2027" / "Coach" /
+        /// "General" columns instead of "Group", and the URL tab has no header at
+        /// all. Deciding by shape rather than name means a new sale tab works
+        /// without a code change AND a renamed roster tab doesn't get ingested as
+        /// a sale.
+        /// </summary>
+        private static bool IsSaleSheet(DataTable sheet)
+        {
+            if (NonSaleSheetNames.Contains(sheet.TableName.Trim()))
+                return false;
+
+            return SheetRegistrationReader.HasSaleHeader(sheet);
+        }
+
+        /// <summary>
         /// Opens an uploaded workbook (from a stream, so it never has to touch disk)
-        /// and returns the names of its sale sheets, in workbook order.
+        /// and returns the names of its sale sheets, in workbook order. NB
+        /// ExcelDataReader disposes <paramref name="excelStream"/> when the reader
+        /// is disposed - callers that need to read the workbook again must open a
+        /// fresh stream over the same bytes.
         /// </summary>
         public static List<string> ListSaleSheets(Stream excelStream, string fileName)
         {
@@ -27,8 +50,8 @@ namespace Autofills.Common
             var ds = ReadDataSet(reader);
 
             return ds.Tables.Cast<DataTable>()
+                .Where(IsSaleSheet)
                 .Select(t => t.TableName)
-                .Where(name => !NonSaleSheetNames.Contains(name.Trim()))
                 .ToList();
         }
 
