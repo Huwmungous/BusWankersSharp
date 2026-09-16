@@ -29,10 +29,13 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
    browser in localStorage, default Bookmark):
-   - **Bookmark** - lists that sale's groups, each with a draggable
-     **Glasto nnnn - Fill Group X** bookmarklet, a *Try it on the Test Form*
-     button, and (collapsed) a copy/paste table of the group's reg numbers and
-     postcodes (`GroupFillPanel`).
+   - **Bookmark** - a *Download "Glasto <Sale> Bookmarks"* button produces a
+     standard bookmarks HTML file (`bookmarkFolderHtml`) that imports as one
+     folder holding a bookmark per group, with per-browser import steps; below
+     it, each group also has a draggable **Glasto nnnn - Fill Group X**
+     bookmarklet, a *Try it on the Test Form* button, and (collapsed) a
+     copy/paste table of the group's reg numbers and postcodes
+     (`GroupFillPanel`).
    - **AutoFill Options extension** (`ExtensionInstructions`) - the original
      route: Download button, Remote Import URL, screenshots, video, with the free
      plan's 10-fills-a-day cap warned up front.
