@@ -32,6 +32,11 @@ import './LaunchSection.css';
 const RESYNC_EVERY_MS = 60000;
 const FINAL_SYNC_BEFORE_MS = 12000;
 const CLOCK_SAMPLES = 8;
+// "Rehearse" arms for this far ahead instead of the real sale time, so the
+// whole jump can be tried without touching the saved settings (the first
+// live test was done by editing the sale date, and a leftover month meant
+// it was quietly 61 days away).
+const REHEARSAL_SECONDS = 30;
 
 const isHttpUrl = (s) => {
   try {
@@ -60,6 +65,17 @@ const formatCountdown = (ms) => {
   return past ? `-${withDays}` : withDays;
 };
 
+// "61 days", "3 hours", "12 minutes" - a coarse distance shown next to the
+// sale time so a wrong month or year is obvious at a glance.
+const describeDistance = (ms) => {
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`;
+  const hours = Math.round(ms / 3600000);
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.round(ms / 86400000);
+  return `${days} day${days === 1 ? '' : 's'}`;
+};
+
 const signedMs = (ms) => `${ms >= 0 ? '+' : '-'}${Math.abs(ms).toFixed(1)} ms`;
 
 // The holding page written into each spare window so the user can see what
@@ -76,6 +92,7 @@ const LaunchSection = ({ year }) => {
   const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | ready | error
   const [syncError, setSyncError] = useState('');
   const [armed, setArmed] = useState(false);
+  const [rehearsalTarget, setRehearsalTarget] = useState(null); // epoch ms while rehearsing, else null
   const [fired, setFired] = useState(null); // { via, lateMs }
   const [notice, setNotice] = useState(imported ? 'Settings taken from the launch link and saved in this browser.' : '');
   const [spareCount, setSpareCount] = useState(0);
@@ -87,11 +104,16 @@ const LaunchSection = ({ year }) => {
   const wakeLockRef = useRef(null);
   const cancelRef = useRef(null);
 
-  const targetMs = londonWallToEpoch(config.saleAt);
+  const saleMs = londonWallToEpoch(config.saleAt);
+  const rehearsing = rehearsalTarget != null;
+  // What the countdown and the scheduler aim at: the rehearsal moment while
+  // rehearsing, otherwise the real sale time.
+  const targetMs = rehearsing ? rehearsalTarget : saleMs;
   const urlOk = isHttpUrl(config.url);
   const nowMs = correctedNow(syncRef.current);
   const remainingMs = targetMs != null ? targetMs - config.leadMs - nowMs : null;
   const targetInFuture = remainingMs != null && remainingMs > 0;
+  const saleInFuture = saleMs != null && saleMs - config.leadMs - nowMs > 0;
 
   // ---- settings ---------------------------------------------------------
 
@@ -223,23 +245,42 @@ const LaunchSection = ({ year }) => {
       setNotice('The ticket URL needs to be a full http(s) address.');
       return;
     }
-    if (targetMs == null) {
+    if (saleMs == null) {
       setNotice('Set the sale time first.');
       return;
     }
-    if (!targetInFuture) {
+    if (!saleInFuture) {
       setNotice('That sale time has already passed.');
       return;
     }
+    setRehearsalTarget(null);
     setFired(null);
     setNotice('');
     setArmed(true);
     acquireWakeLock();
-    console.debug(`[launch] armed for ${formatLondon(targetMs)} (lead ${config.leadMs} ms), ${sparesRef.current.length} spare window(s)`);
+    console.debug(`[launch] armed for ${formatLondon(saleMs)} (lead ${config.leadMs} ms), ${sparesRef.current.length} spare window(s)`);
+  };
+
+  // Same as arming, but for REHEARSAL_SECONDS from now rather than the sale
+  // time - the saved settings are untouched, so a rehearsal can't leave a
+  // wrong date behind.
+  const rehearse = () => {
+    if (!urlOk) {
+      setNotice('The ticket URL needs to be a full http(s) address.');
+      return;
+    }
+    const target = correctedNow(syncRef.current) + REHEARSAL_SECONDS * 1000 + config.leadMs;
+    setRehearsalTarget(target);
+    setFired(null);
+    setNotice('');
+    setArmed(true);
+    acquireWakeLock();
+    console.debug(`[launch] REHEARSAL armed for ${formatLondon(target)} (lead ${config.leadMs} ms), ${sparesRef.current.length} spare window(s)`);
   };
 
   const disarm = () => {
     setArmed(false);
+    setRehearsalTarget(null);
     releaseWakeLock();
     setNotice('Disarmed. Spare windows are still open.');
     console.debug('[launch] disarmed');
@@ -340,7 +381,11 @@ const LaunchSection = ({ year }) => {
                 step="60"
                 onChange={(e) => updateConfig({ saleAt: e.target.value })}
               />
-              {targetMs != null && <span className="launch-field-hint">= {formatLondon(targetMs)}</span>}
+              {saleMs != null && (
+                <span className="launch-field-hint">
+                  = {formatLondon(saleMs)}{saleInFuture ? ` (${describeDistance(saleMs - nowMs)} away)` : ' - already passed'}
+                </span>
+              )}
             </label>
             <label className="launch-field launch-field-inline">
               <span>Jump early by (ms)</span>
@@ -352,7 +397,7 @@ const LaunchSection = ({ year }) => {
                 value={config.leadMs}
                 onChange={(e) => updateConfig({ leadMs: e.target.value })}
               />
-              <span className="launch-field-hint">0 = exactly on the moment; a few hundred ms early covers page-load time.</span>
+              <span className="launch-field-hint">200 is the default: the jump takes a page-load, so leaving a touch early lands on the moment. 0 = exactly on it.</span>
             </label>
             <div className="launch-link-row">
               <button type="button" className="launch-btn" onClick={copyLink} disabled={!urlOk}>
@@ -397,7 +442,7 @@ const LaunchSection = ({ year }) => {
               <div className={`launch-countdown${armed ? ' launch-countdown-armed' : ''}${!targetInFuture ? ' launch-countdown-past' : ''}`}>
                 <div className="launch-countdown-value">{formatCountdown(remainingMs)}</div>
                 <div className="launch-clock-caption">
-                  {targetInFuture ? 'until the jump' : 'the sale time has passed'}
+                  {rehearsing ? 'until the REHEARSAL jump' : (targetInFuture ? 'until the jump' : 'the sale time has passed')}
                   {config.leadMs ? ` (${config.leadMs > 0 ? `${config.leadMs} ms early` : `${-config.leadMs} ms late`})` : ''}
                 </div>
               </div>
@@ -418,19 +463,25 @@ const LaunchSection = ({ year }) => {
             </div>
 
             {!armed ? (
-              <button type="button" className="launch-btn launch-btn-arm" onClick={arm} disabled={!urlOk || !targetInFuture}>
-                Arm this browser
-              </button>
+              <>
+                <button type="button" className="launch-btn launch-btn-arm" onClick={arm} disabled={!urlOk || !saleInFuture}>
+                  Arm this browser
+                </button>
+                <button type="button" className="launch-btn launch-btn-secondary launch-btn-rehearse" onClick={rehearse} disabled={!urlOk}>
+                  Rehearse: jump in {REHEARSAL_SECONDS} s
+                </button>
+                <span className="launch-field-hint">Rehearsal ignores the sale time and jumps to the ticket page {REHEARSAL_SECONDS} seconds from now - try it once in each browser.</span>
+              </>
             ) : (
               <button type="button" className="launch-btn launch-btn-disarm" onClick={disarm}>
-                Disarm
+                {rehearsing ? 'Cancel rehearsal' : 'Disarm'}
               </button>
             )}
 
             {armed && !fired && (
-              <div className="launch-armed-box">
-                <p><strong>Armed.</strong> This window{spareCount > 0 ? ` and ${spareCount} spare${spareCount === 1 ? '' : 's'}` : ''} will jump to<br />
-                  <code>{config.url}</code><br />at {formatLondon(targetMs - config.leadMs)}.</p>
+              <div className={`launch-armed-box${rehearsing ? ' launch-armed-box-rehearsal' : ''}`}>
+                <p><strong>{rehearsing ? 'Rehearsal armed.' : 'Armed.'}</strong> This window{spareCount > 0 ? ` and ${spareCount} spare${spareCount === 1 ? '' : 's'}` : ''} will jump to<br />
+                  <code>{config.url}</code><br />at {formatLondonClock(targetMs - config.leadMs)} ({formatLondon(targetMs - config.leadMs)}).</p>
                 <ul>
                   <li>Keep this window <strong>on screen</strong> - not minimised, not behind another window.</li>
                   <li>Laptop on mains power; don&rsquo;t let it sleep (a screen wake lock has been requested{navigator.wakeLock ? '' : ', but this browser doesn’t support it'}).</li>
@@ -451,7 +502,7 @@ const LaunchSection = ({ year }) => {
           <ol>
             <li>Fill in the settings above (once), then <em>Copy launch link</em>.</li>
             <li>Open each other browser on this computer, paste the link into its address bar and press Enter. Its settings fill in automatically. Do the same on every other computer, phone and tablet you have to hand.</li>
-            <li>In each browser, check the clock card says it&rsquo;s synced with NTP, open any spare windows you want, then press <em>Arm this browser</em>.</li>
+            <li>In each browser, check the clock card says it&rsquo;s synced with NTP, then press <em>Rehearse</em> once to watch it jump - the ticket page will say it&rsquo;s not open yet, and that&rsquo;s fine. Come back, open any spare windows you want, then press <em>Arm this browser</em>.</li>
             <li>Arrange the windows so every armed one is visible, and leave them alone. At the moment they all jump to the ticket page.</li>
             <li>Then it&rsquo;s the usual drill: in whichever browser gets through, use its <em>Fill Group</em> bookmark (Documentation tab) to fill the form.</li>
           </ol>
