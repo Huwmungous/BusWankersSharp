@@ -6,16 +6,17 @@ const pub = process.env.PUBLIC_URL;
 
 // One entry per autofill file the dropdown can offer. Keyed by the same sale
 // name the spreadsheet-upload backend uses for its sheets/GroupSizes (see
-// UploaderService/appsettings.json and UploadServiceController.DownloadNameFor)
-// so a sale added there lines up with an entry added here. Coach and General
-// keep the specific dates/cost text that's actually known; the others get
-// generic text until Hugh gives us real detail for them.
+// UploaderService/appsettings.json), and each `filename` MUST match what
+// UploadServiceController.DownloadNameFor produces for that sheet - that's how
+// the dropdown decides whether a sale is populated or "(empty)". Coach and
+// General keep the specific dates/cost text that's actually known; the others
+// get generic text until Hugh gives us real detail for them.
 const SALE_INFO = {
   Coach: {
     label: 'Coach Tickets',
     shortLabel: 'Coach + Ticket Package Sale',
     heading: 'This is the 2027 Glastonbury Coach Ticket Autofill File',
-    filename: 'bw_autofill.csv',
+    filename: 'coach_autofill.csv',
     dates: [
       'Registration deadline: 5:00pm BST, Friday 25th September 2026',
       'Coach + ticket package sale: 6:00pm BST, Thursday 1st October 2026',
@@ -26,7 +27,7 @@ const SALE_INFO = {
     label: 'General Sale',
     shortLabel: 'General Sale',
     heading: 'This is the 2027 Glastonbury General Sale Autofill File',
-    filename: 'g_autofill.csv',
+    filename: 'general_autofill.csv',
     dates: [
       'Registration deadline: 5:00pm BST, Friday 25th September 2026',
       'General sale (standard tickets): 9:00am BST, Sunday 4th October 2026',
@@ -40,7 +41,7 @@ const SALE_INFO = {
     label: 'Resale - Coach',
     shortLabel: 'Coach Resale',
     heading: 'This is the 2027 Glastonbury Coach Resale Autofill File',
-    filename: 'resale_coach_autofill.csv',
+    filename: 'coach_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
     cost: null,
   },
@@ -48,7 +49,7 @@ const SALE_INFO = {
     label: 'Resale - General',
     shortLabel: 'General Resale',
     heading: 'This is the 2027 Glastonbury General Resale Autofill File',
-    filename: 'resale_general_autofill.csv',
+    filename: 'general_resale_autofill.csv',
     dates: ['Dates to be confirmed — check with your group organiser before use.'],
     cost: null,
   },
