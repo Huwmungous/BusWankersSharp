@@ -11,8 +11,13 @@
 # Path-based proxy under the SAME origin as the frontend (https://longmanrd.net/buswankers/),
 # so the upload page's fetch() calls need no CORS.
 
+# Upstream by IP, matching every other intelligence-hosted service in holly's
+# longmanrd.conf (rbapi, ifconfig, iflogger, the MCP upstreams are all
+# 192.168.0.200:<port>) - no dependence on holly resolving the AD name at
+# config load. intelligence's firewalld must allow 5038/tcp from holly
+# (192.168.0.252); buswankers-remote-install.sh opens that.
 location /buswankers-api/ {
-    proxy_pass http://intelligence.longmanrd.infoforum.co.uk:5038/;
+    proxy_pass http://192.168.0.200:5038/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -37,7 +42,7 @@ location /buswankers-api/ {
 # AutofillStore.IsSafeFileName.
 location ~ ^/buswankers/[a-z0-9_]*autofill\.csv$ {
     rewrite ^/buswankers/(.*)$ /api/autofill/files/$1 break;
-    proxy_pass http://intelligence.longmanrd.infoforum.co.uk:5038;
+    proxy_pass http://192.168.0.200:5038;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
