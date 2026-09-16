@@ -4,7 +4,7 @@ import { buildLaunchLink, loadConfig, saveConfig } from '../launch/config';
 import { formatLondon, formatLondonClock, londonWallToEpoch } from '../launch/londonTime';
 import './LaunchSection.css';
 
-// The "Launch" tab: arm this browser to open the ticket page, in a window of
+// The "Launcher" tab: arm this browser to open the ticket page, in a window of
 // its own, at the sale time - on NTP-corrected time.
 //
 // A web page cannot start OTHER browsers (Chrome can't launch Firefox), so

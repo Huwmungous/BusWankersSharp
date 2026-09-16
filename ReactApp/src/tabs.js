@@ -9,7 +9,8 @@ export const TABS = [
   { id: 'documentation', label: 'Documentation' },
   { id: 'running-order', label: 'Running Order' },
   { id: 'test-form', label: 'Test Form' },
-  { id: 'launch', label: 'Launch' },
+  // id stays 'launch': it's the hash (#launch) that launch links point at.
+  { id: 'launch', label: 'Launcher' },
 ];
 
 export const DEFAULT_TAB = 'documentation';

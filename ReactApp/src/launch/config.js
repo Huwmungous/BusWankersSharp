@@ -126,7 +126,7 @@ export function loadConfig() {
   return { config: readStorage() || { ...DEFAULT_CONFIG }, imported: false };
 }
 
-// A link that opens THIS page on the Launch tab with these settings baked in.
+// A link that opens THIS page on the Launcher tab with these settings baked in.
 export function buildLaunchLink(config) {
   const url = new URL(window.location.href);
   url.search = '';
