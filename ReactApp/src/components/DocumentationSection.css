@@ -181,6 +181,90 @@
   }
 }
 
+/* Method chooser: two equal cards, bookmark vs extension (2026-09-16) */
+.doc-section .method-chooser {
+  max-width: 760px;
+  margin: 25px auto 10px;
+}
+
+.doc-section .method-chooser h3 {
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.doc-section .method-chooser-note {
+  color: #666;
+  font-size: 0.9em;
+  margin: 0 0 12px;
+}
+
+.doc-section .method-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.doc-section .method-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 14px 16px;
+  background-color: white;
+  border: 2px solid #dfe3e8;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: #333;
+  line-height: 1.45;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.doc-section .method-card:hover {
+  border-color: #9fb3c8;
+}
+
+.doc-section .method-card-active {
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.18);
+}
+
+.doc-section .method-card-title {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #2c3e50;
+}
+
+.doc-section .method-card-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.doc-section .method-card-badge-good {
+  background-color: #dcf5e3;
+  color: #1a7f37;
+}
+
+.doc-section .method-card-badge-warn {
+  background-color: #fff4e5;
+  color: #8a5a00;
+}
+
+.doc-section .method-card-text {
+  font-size: 0.92em;
+  color: #555;
+}
+
+@media (max-width: 640px) {
+  .doc-section .method-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Bookmarklet-first instructions (2026-09-16) */
 .doc-section .doc-steps {
   max-width: 760px;
@@ -251,4 +335,8 @@
 
 .doc-section .download-inline {
   padding: 8px 16px;
+}
+
+.doc-section .doc-extension h3 {
+  border-bottom-color: #0066cc;
 }

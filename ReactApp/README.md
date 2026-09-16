@@ -26,14 +26,18 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    roster sheet is read into the running order; per-sheet outcomes are shown and
    the other tabs refresh.
 2. **Documentation** (`DocumentationSection`) - the landing tab. Pick a sale
-   (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo) and it
-   lists that sale's groups, each with a draggable **Glasto nnnn - Fill Group X**
-   bookmarklet, a *Try it on the Test Form* button, and (collapsed) a copy/paste
-   table of the group's reg numbers and postcodes. Key dates and cost info per
-   sale. The AutoFill Options / Lightning Autofill extension instructions (Remote
-   Import URL, Download button, screenshots, video) are kept in a collapsed
-   "prefer the extension?" section with a warning about its free plan's
-   10-fills-a-day cap. A sale with nothing ingested reads `(empty)` and explains.
+   (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
+   key dates/cost, then choose a fill method from two equal cards (remembered per
+   browser in localStorage, default Bookmark):
+   - **Bookmark** - lists that sale's groups, each with a draggable
+     **Glasto nnnn - Fill Group X** bookmarklet, a *Try it on the Test Form*
+     button, and (collapsed) a copy/paste table of the group's reg numbers and
+     postcodes (`GroupFillPanel`).
+   - **AutoFill Options extension** (`ExtensionInstructions`) - the original
+     route: Download button, Remote Import URL, screenshots, video, with the free
+     plan's 10-fills-a-day cap warned up front.
+
+   A sale with nothing ingested reads `(empty)` and explains.
 
    **Why bookmarklets (2026-09-16):** Lightning Autofill's free plan is capped at
    10 profile executions per day - anyone who tests or reloads on sale morning can

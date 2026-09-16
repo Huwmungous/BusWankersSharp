@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
-import { downloadStoredFile, downloadUrlFor, fetchAutofillGroups } from '../api/autofillApi';
+import { downloadStoredFile, fetchAutofillGroups } from '../api/autofillApi';
 import { DEFAULT_YEAR } from '../festival';
 import './DocumentationSection.css';
-
-const pub = process.env.PUBLIC_URL;
 
 // One entry per autofill file the dropdown can offer. Keyed by the same sale
 // name the spreadsheet-upload backend uses for its sheets/GroupSizes (see
@@ -75,15 +74,18 @@ const formatWhen = (iso) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
-// The Documentation tab (the landing tab). Pick a sale, find your group,
-// drag its "Fill Group X" bookmark to the bookmarks bar, try it on the Test
-// Form, and on the day click it on the See Tickets registration page.
-//
-// The bookmarklet replaced the AutoFill Options / Lightning Autofill
-// extension as the recommended route on 2026-09-16: the extension's free
-// plan is capped at 10 fills a day, which is a real risk on sale morning. The
-// extension instructions are kept (collapsed) for anyone who prefers it -
-// the same autofill file drives both.
+// The Documentation tab (the landing tab). Pick a sale, then choose HOW to
+// fill the registration form - two equal routes, both driven by the same
+// autofill file:
+//   - Bookmark: drag your group's "Fill Group X" bookmark to the bookmarks
+//     bar, try it on the Test Form, click it on the See Tickets page on the
+//     day. No extension, no account, no daily limit. Added 2026-09-16 and
+//     the recommended route.
+//   - Extension: the original AutoFill Options / Lightning Autofill route,
+//     for people who already use it. Its free plan is capped at 10 fills a
+//     day, which the instructions warn about up front.
+// The chosen method is remembered per browser (localStorage) so someone who
+// picked the extension lands on their own instructions next time.
 //
 // storedFiles: Map of filename -> { filename, size, lastModified } from the
 // backend's store (see BusWankersPage). A sale whose filename isn't in it has
@@ -91,8 +93,20 @@ const formatWhen = (iso) => {
 // the download button is disabled. While the store is still loading (or
 // unreachable) nothing is known, so every sale is treated as empty rather
 // than guessing.
+const METHOD_KEY = 'bw-fill-method';
+
+const readSavedMethod = () => {
+  try {
+    const v = window.localStorage.getItem(METHOD_KEY);
+    return v === 'extension' ? 'extension' : 'bookmark';
+  } catch {
+    return 'bookmark';
+  }
+};
+
 const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
   const [saleType, setSaleType] = useState('Coach');
+  const [method, setMethod] = useState(readSavedMethod); // bookmark | extension
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
   const [groups, setGroups] = useState(null);
@@ -150,6 +164,11 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
     }
   };
 
+  const chooseMethod = (m) => {
+    setMethod(m);
+    try { window.localStorage.setItem(METHOD_KEY, m); } catch { /* per-browser convenience only */ }
+  };
+
   // "Try it on the Test Form" has just filled the (hidden) Test Form tab -
   // switch to it so the person can see the result.
   const showTestForm = () => {
@@ -203,120 +222,95 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
           )}
         </div>
 
-        <div className="doc-steps">
-          <h3>Step 1 - find your group and grab its bookmark</h3>
-          <p>
-            Each group below has a green <strong>Glasto {year} - Fill Group …</strong> bookmark. <strong>Drag it up onto your
-            browser&rsquo;s bookmarks bar</strong> (or right-click it and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to
-            favourites&rdquo;). Can&rsquo;t see a bookmarks bar? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
-            (<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it. The bookmark carries your group&rsquo;s
-            registration numbers and postcodes inside it, so on the day it needs nothing from this site.
+        <div className="method-chooser" role="group" aria-label="How do you want to fill the form?">
+          <h3>How do you want to fill in the registration form?</h3>
+          <p className="method-chooser-note">
+            Both use the same {info.label.toLowerCase()} data. Pick whichever you&rsquo;re happier with - you can switch any time.
           </p>
-
-          <GroupFillPanel
-            groups={groups}
-            status={groupsStatus}
-            error={groupsError}
-            year={year}
-            saleLabel={info.label}
-            onTried={showTestForm}
-          />
-
-          <h3>Step 2 - try it out</h3>
-          <p>
-            Click <strong>Try it on the Test Form</strong> next to your group, or go to the <a href="#test-form">Test Form tab</a> and
-            click your new bookmark there - it&rsquo;s a copy of the real registration page. Your group&rsquo;s details should
-            appear in the boxes and a green bar should confirm how many people were filled in. Click <strong>Proceed</strong> on
-            the test form to see exactly what it holds. Do this well before the sale, not on the morning.
-          </p>
-
-          <h3>Step 3 - on the day</h3>
-          <ol>
-            <li>Be on <code>glastonbury.seetickets.com</code> <em>before</em> the sale opens and wait in the queue. Don&rsquo;t refresh,
-              and don&rsquo;t open extra tabs or devices - the festival says that can get you blocked.</li>
-            <li>When the registration page appears (the one asking for &ldquo;Registration Number&rdquo; and &ldquo;Postcode&rdquo; for each
-              person), click your <strong>Glasto {year} - Fill Group …</strong> bookmark once.</li>
-            <li>Check the boxes look right - the green bar tells you how many people were filled - then click <strong>Proceed</strong>.
-              You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
-          </ol>
-          <p className="doc-fallback">
-            No bookmarks bar (on a phone, say)? Open <strong>Show details / copy &amp; paste</strong> under your group: every
-            registration number and postcode has a Copy button, so you can paste rather than type.
-          </p>
+          <div className="method-cards">
+            <button
+              type="button"
+              className={`method-card${method === 'bookmark' ? ' method-card-active' : ''}`}
+              aria-pressed={method === 'bookmark'}
+              onClick={() => chooseMethod('bookmark')}
+            >
+              <span className="method-card-title">Bookmark</span>
+              <span className="method-card-badge method-card-badge-good">No daily limit</span>
+              <span className="method-card-text">
+                A one-click bookmark with your group&rsquo;s details built in. No extension, no account, nothing to install.
+                Chrome, Edge, Firefox and Safari.
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`method-card${method === 'extension' ? ' method-card-active' : ''}`}
+              aria-pressed={method === 'extension'}
+              onClick={() => chooseMethod('extension')}
+            >
+              <span className="method-card-title">AutoFill Options extension</span>
+              <span className="method-card-badge method-card-badge-warn">Free plan: 10 fills a day</span>
+              <span className="method-card-text">
+                The browser extension we&rsquo;ve used in previous years (now called Lightning Autofill). Fills the page
+                automatically. If you already use it and know it, carry on.
+              </span>
+            </button>
+          </div>
         </div>
 
-        <details className="doc-alt">
-          <summary>Prefer the AutoFill Options / Lightning Autofill browser extension? (read this first)</summary>
-          <div className="doc-alt-body">
-            <p className="doc-warning">
-              <strong>Warning:</strong> the extension&rsquo;s free plan is limited to <strong>10 fills per day</strong>, and every page
-              load that triggers it counts. Test the day before, not on the morning, and don&rsquo;t reload the registration
-              page. If you hit the limit during the sale the extension will not fill anything - use your bookmark or the
-              copy &amp; paste details instead.
+        {method === 'bookmark' && (
+          <div className="doc-steps">
+            <h3>Step 1 - find your group and grab its bookmark</h3>
+            <p>
+              Each group below has a green <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark. <strong>Drag it up onto your
+              browser&rsquo;s bookmarks bar</strong> (or right-click it and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to
+              favourites&rdquo;). Can&rsquo;t see a bookmarks bar? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
+              (<kbd>&#8984;</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it. The bookmark carries your group&rsquo;s
+              registration numbers and postcodes inside it, so on the day it needs nothing from this site.
             </p>
 
-            <p className="sale-picker-note">
-              <button
-                type="button"
-                className="download-button download-inline"
-                onClick={handleDownload}
-                disabled={isEmpty || downloadStatus === 'working'}
-                title={isEmpty ? 'Nothing has been ingested for this sale yet' : `Download ${info.filename}`}
-              >
-                {downloadStatus === 'working' ? 'Downloading…' : `Download ${info.filename}`}
-              </button>
-              {downloadStatus === 'error' && <span className="sale-picker-error"> {downloadError}</span>}
+            <GroupFillPanel
+              groups={groups}
+              status={groupsStatus}
+              error={groupsError}
+              year={year}
+              saleLabel={info.label}
+              onTried={showTestForm}
+            />
+
+            <h3>Step 2 - try it out</h3>
+            <p>
+              Click <strong>Try it on the Test Form</strong> next to your group, or go to the <a href="#test-form">Test Form tab</a> and
+              click your new bookmark there - it&rsquo;s a copy of the real registration page. Your group&rsquo;s details should
+              appear in the boxes and a green bar should confirm how many people were filled in. Click <strong>Proceed</strong> on
+              the test form to see exactly what it holds. Do this well before the sale, not on the morning.
             </p>
 
-            <h4>Use this file to populate your Autofill Options</h4>
-
-            <div className="image-container">
-              <img src={`${pub}/Hippies_1.png`} alt="ImportExport" className="image-with-shadow" />
-            </div>
-
-            <h4>In AutoFill Options you will see a band of tabs across the top. You should be on the Sync tab to start.</h4>
-
-            <div className="image-container">
-              <img src={`${pub}/sync.png`} alt="Sync" className="image-with-shadow" />
-            </div>
-
-            <h4>You can enter the following &ldquo;{remoteImportUrl}&rdquo; into the Remote Import box and click Import.</h4>
-
-            <h4>OR</h4>
-
-            <h4>
-              You can click{' '}
-              {isEmpty ? (
-                <span className="link-disabled" title="Nothing has been ingested for this sale yet">this link</span>
-              ) : (
-                <a href={downloadUrlFor(info.filename)} download={info.filename}>this link</a>
-              )}
-              {' '}to download the {info.label.toLowerCase()} autofill file and save it, you then click on the Import button under Import/Export, and browse to where you&rsquo;ve saved the file
-              {isEmpty && ' (not available until a spreadsheet has been ingested for this sale)'}
-            </h4>
-
-            <h4>
-              After you&rsquo;ve completed either of the above you then need to click on the &ldquo;Forms Field&rdquo; tab, scroll to the bottom and click save.
-              <br /><br />
-              You will see a green dialogue box pop up at the top of the page telling you the import was successful (or not)
-            </h4>
-
-            <div className="image-container">
-              <img src={`${pub}/formfield.png`} alt="Form Fields" className="image-with-shadow" />
-            </div>
-
-            <h4>If the import was successful you should see registrations and postcodes appearing in the &lsquo;value&rsquo; column, and the <a href="#test-form">Test Form</a> should fill itself in.</h4>
-
-            <h4>Becca Productions Inc.</h4>
-
-            <div className="video-container">
-              <video controls width="640" height="360">
-                <source src={`${pub}/DannyVid.mp4`} type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-            </div>
+            <h3>Step 3 - on the day</h3>
+            <ol>
+              <li>Be on <code>glastonbury.seetickets.com</code> <em>before</em> the sale opens and wait in the queue. Don&rsquo;t refresh,
+                and don&rsquo;t open extra tabs or devices - the festival says that can get you blocked.</li>
+              <li>When the registration page appears (the one asking for &ldquo;Registration Number&rdquo; and &ldquo;Postcode&rdquo; for each
+                person), click your <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark once.</li>
+              <li>Check the boxes look right - the green bar tells you how many people were filled - then click <strong>Proceed</strong>.
+                You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
+            </ol>
+            <p className="doc-fallback">
+              No bookmarks bar (on a phone, say)? Open <strong>Show details / copy &amp; paste</strong> under your group: every
+              registration number and postcode has a Copy button, so you can paste rather than type.
+            </p>
           </div>
-        </details>
+        )}
+
+        {method === 'extension' && (
+          <ExtensionInstructions
+            info={info}
+            isEmpty={isEmpty}
+            remoteImportUrl={remoteImportUrl}
+            downloadStatus={downloadStatus}
+            downloadError={downloadError}
+            onDownload={handleDownload}
+          />
+        )}
       </div>
     </section>
   );
