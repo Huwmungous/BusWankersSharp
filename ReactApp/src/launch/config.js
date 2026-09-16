@@ -10,23 +10,30 @@
 // Settings:
 //   url     - the ticket page to open at the sale time
 //   saleAt  - London wall-clock 'YYYY-MM-DDTHH:mm' (see londonTime.js), or ''
-//   leadMs  - fire this many ms BEFORE the sale time (0 = exactly on it)
+//   leadMs  - fire this many ms BEFORE the sale time (default 200: the jump
+//             itself takes a page-load, so leaving a little early lands the
+//             request at the ticket site on the moment rather than after it)
 
-export const STORAGE_KEY = 'buswankers.launch.v1';
+export const STORAGE_KEY = 'buswankers.launch.v2';
+// v1 stored leadMs 0 by default; v2 defaults to 200. A browser that still has
+// only v1 gets its url/saleAt carried over and the new default lead.
+const LEGACY_STORAGE_KEY = 'buswankers.launch.v1';
 
 export const DEFAULT_URL = 'https://glastonbury.seetickets.com/';
+export const DEFAULT_LEAD_MS = 200;
 
 export const DEFAULT_CONFIG = Object.freeze({
   url: DEFAULT_URL,
   saleAt: '',
-  leadMs: 0,
+  leadMs: DEFAULT_LEAD_MS,
 });
 
 const QUERY_KEYS = { url: 'url', saleAt: 'saleAt', leadMs: 'lead' };
 
 const clampLead = (v) => {
+  if (v === undefined || v === null || v === '') return DEFAULT_LEAD_MS;
   const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
+  if (!Number.isFinite(n)) return DEFAULT_LEAD_MS;
   return Math.max(-60000, Math.min(60000, Math.round(n)));
 };
 
@@ -39,9 +46,21 @@ const sanitise = (raw) => ({
 function readStorage() {
   try {
     const text = window.localStorage.getItem(STORAGE_KEY);
-    if (!text) return null;
-    const parsed = JSON.parse(text);
-    return parsed && typeof parsed === 'object' ? sanitise(parsed) : null;
+    if (text) {
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === 'object' ? sanitise(parsed) : null;
+    }
+    const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      if (parsed && typeof parsed === 'object') {
+        // Carry over what was typed in; take the new default lead.
+        const migrated = sanitise({ url: parsed.url, saleAt: parsed.saleAt, leadMs: DEFAULT_LEAD_MS });
+        console.debug('[launch] migrated v1 settings to v2 (lead reset to default)');
+        return migrated;
+      }
+    }
+    return null;
   } catch (err) {
     console.debug('[launch] localStorage unreadable:', err && err.message);
     return null;
@@ -107,6 +126,6 @@ export function buildLaunchLink(config) {
   const clean = sanitise(config);
   url.searchParams.set(QUERY_KEYS.url, clean.url);
   if (clean.saleAt) url.searchParams.set(QUERY_KEYS.saleAt, clean.saleAt);
-  if (clean.leadMs) url.searchParams.set(QUERY_KEYS.leadMs, String(clean.leadMs));
+  url.searchParams.set(QUERY_KEYS.leadMs, String(clean.leadMs));
   return url.toString();
 }

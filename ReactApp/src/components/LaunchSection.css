@@ -178,6 +178,19 @@
   background: #1b5e20;
 }
 
+.launch .launch-btn-rehearse {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+}
+
+.launch .launch-armed-box-rehearsal {
+  background: #fff8e1;
+  border-color: #ffe082;
+  color: #6d4c00;
+}
+
 .launch .launch-btn-disarm {
   display: block;
   width: 100%;
