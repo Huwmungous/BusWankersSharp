@@ -265,22 +265,36 @@ public class UploadServiceController : ControllerBase
         _config.GetValue<int?>($"GroupSizes:{sheetName.Trim()}") ?? BusWankers.DEFAULT_MAX_IN_A_GROUP;
 
     /// <summary>
-    /// Coach and General keep the exact filenames the rest of the site already
-    /// hardcodes/documents (the Documentation page's download links, and its "NB:
-    /// filename is different..." note used to say) - "bw_autofill.csv" /
-    /// "g_autofill.csv". Every other sheet (Resale - Coach, Resale - General, Demo,
-    /// or any sheet added later) gets a generic slug of its own name, so a brand new
-    /// sale sheet works without a code change here. The shape produced here is the
-    /// same one AutofillStore.IsSafeFileName accepts - keep the two in step.
+    /// The live autofill filename for a sale sheet. The five known sales have
+    /// fixed, readable names (2026-09-16, replacing the historical bw_/g_
+    /// abbreviations and the sheet-order slugs):
+    ///   Coach            -> coach_autofill.csv
+    ///   General          -> general_autofill.csv
+    ///   Resale - Coach   -> coach_resale_autofill.csv
+    ///   Resale - General -> general_resale_autofill.csv
+    ///   Demo             -> demo_autofill.csv
+    /// Any other sale sheet gets a slug of its own name, so a brand new sale tab
+    /// still works without a code change here. Whatever this returns must be
+    /// accepted by AutofillStore.IsSafeFileName - keep the two in step, and keep
+    /// the frontend's SALE_INFO (DocumentationSection.jsx) in step with this
+    /// table, since that's what the dropdown matches on.
     /// </summary>
+    private static readonly Dictionary<string, string> KnownSaleFilenames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Coach"] = "coach_autofill.csv",
+            ["General"] = "general_autofill.csv",
+            ["Resale - Coach"] = "coach_resale_autofill.csv",
+            ["Resale - General"] = "general_resale_autofill.csv",
+            ["Demo"] = "demo_autofill.csv",
+        };
+
     internal static string DownloadNameFor(string sheetName)
     {
         var trimmed = sheetName.Trim();
 
-        if (string.Equals(trimmed, "Coach", StringComparison.OrdinalIgnoreCase))
-            return "bw_autofill.csv";
-        if (string.Equals(trimmed, "General", StringComparison.OrdinalIgnoreCase))
-            return "g_autofill.csv";
+        if (KnownSaleFilenames.TryGetValue(trimmed, out var known))
+            return known;
 
         var slug = Regex.Replace(trimmed.ToLowerInvariant(), "[^a-z0-9]+", "_").Trim('_');
         return string.IsNullOrEmpty(slug) ? "autofill.csv" : $"{slug}_autofill.csv";

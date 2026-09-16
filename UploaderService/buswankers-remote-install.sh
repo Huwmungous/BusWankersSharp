@@ -142,6 +142,20 @@ STORE_DIR="${BW_AUTOFILL_STORE:-/srv/BusWankersSharp/Data/autofill}"
 mkdir -p "$STORE_DIR"
 chown "$SERVICE_USER:$SERVICE_GROUP" "$STORE_DIR"
 chmod u=rwx,g=rx,o= "$STORE_DIR"
+# Rename any files still under the pre-2026-09-16 names to the current ones
+# (UploadServiceController.DownloadNameFor) so an already-ingested sale keeps
+# its data across the rename rather than showing as "(empty)" until the next
+# upload. Only renames when the new name doesn't already exist.
+while IFS=: read -r OLD NEW; do
+    if [ -f "$STORE_DIR/$OLD" ] && [ ! -e "$STORE_DIR/$NEW" ]; then
+        mv "$STORE_DIR/$OLD" "$STORE_DIR/$NEW" && echo "    Renamed legacy $OLD -> $NEW"
+    fi
+done <<'RENAMES'
+bw_autofill.csv:coach_autofill.csv
+g_autofill.csv:general_autofill.csv
+resale_coach_autofill.csv:coach_resale_autofill.csv
+resale_general_autofill.csv:general_resale_autofill.csv
+RENAMES
 STORE_COUNT=$(find "$STORE_DIR" -maxdepth 1 -name '*.csv' 2>/dev/null | wc -l)
 echo -e "${GREEN}[OK] $STORE_DIR ready ($STORE_COUNT autofill file(s) present)${NC}"
 echo ""

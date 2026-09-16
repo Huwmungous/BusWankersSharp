@@ -32,7 +32,7 @@ location /buswankers-api/ {
 # build - they're ingested into UploaderService's AutofillStore (via the upload
 # bar on the page) and served back by GET /api/autofill/files/{filename}. This
 # regex location keeps the documented Remote Import URL,
-# https://longmanrd.net/buswankers/g_autofill.csv etc, working unchanged by
+# https://longmanrd.net/buswankers/general_autofill.csv etc, working by
 # rewriting it onto that route. A regex location wins over the plain
 # /buswankers/ prefix location (however that one is declared - included from
 # buswankers.inc or written inline in the server block), so it has to sit in

@@ -43,10 +43,10 @@ deploy path so releases don't wipe it) and are named by
 
 | Sale sheet         | File                          |
 |--------------------|-------------------------------|
-| Coach              | `bw_autofill.csv`             |
-| General            | `g_autofill.csv`              |
-| Resale - Coach     | `resale_coach_autofill.csv`   |
-| Resale - General   | `resale_general_autofill.csv` |
+| Coach              | `coach_autofill.csv`          |
+| General            | `general_autofill.csv`        |
+| Resale - Coach     | `coach_resale_autofill.csv`   |
+| Resale - General   | `general_resale_autofill.csv` |
 | Demo               | `demo_autofill.csv`           |
 | anything else      | `<slug-of-sheet-name>_autofill.csv` |
 
@@ -63,9 +63,11 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 Two ways a user gets a file, both served by `GET /files/{filename}`:
 
 - **Remote Import** in AutoFill Options: the documented URL is still
-  `https://longmanrd.net/buswankers/<file>` (e.g. `.../buswankers/g_autofill.csv`).
+  `https://longmanrd.net/buswankers/<file>` (e.g. `.../buswankers/general_autofill.csv`).
+  The pre-2026 names `bw_autofill.csv` / `g_autofill.csv` are gone - anyone with one
+  of those URLs saved in AutoFill Options needs the new one from the page.
   `ops/nginx/buswankers-api.inc` has a regex location that rewrites exactly that shape
-  onto the API route, so URLs people already have keep working.
+  onto the API route.
 - **Download button / "this link"**: fetches `/buswankers-api/api/autofill/files/<file>`
   and saves it via the browser (`src/api/autofillApi.js`).
 
