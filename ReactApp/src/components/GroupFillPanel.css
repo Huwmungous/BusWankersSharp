@@ -1,0 +1,159 @@
+.bw-groups {
+  list-style: none;
+  padding: 0;
+  margin: 15px auto;
+  max-width: 760px;
+  text-align: left;
+}
+
+.bw-group {
+  background-color: white;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.bw-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bw-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 1.1em;
+  color: #333;
+}
+
+.bw-group-count {
+  font-size: 0.85em;
+  color: #666;
+}
+
+.bw-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The draggable bookmarklet - styled like a bookmark so it's obvious it's a
+   thing you pick up, not a link you click. */
+.bw-bookmarklet {
+  display: inline-block;
+  padding: 8px 14px;
+  background-color: #1a7f37;
+  color: white !important;
+  border-radius: 6px;
+  font-weight: bold;
+  text-decoration: none !important;
+  cursor: grab;
+  border: 2px dashed rgba(255, 255, 255, 0.6);
+}
+
+.bw-bookmarklet:active {
+  cursor: grabbing;
+}
+
+.bw-try,
+.bw-details-toggle,
+.bw-copy {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid #b8c2cc;
+  background-color: #f7f9fb;
+  color: #2c3e50;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.bw-try {
+  background-color: #0066cc;
+  border-color: #0066cc;
+  color: white;
+}
+
+.bw-try:hover {
+  background-color: #0055aa;
+}
+
+.bw-details-toggle:hover,
+.bw-copy:hover {
+  background-color: #e9eef3;
+}
+
+.bw-copy {
+  padding: 2px 8px;
+  font-size: 0.8em;
+  margin-left: 6px;
+}
+
+.bw-copy-copied {
+  background-color: #dcf5e3;
+  border-color: #1a7f37;
+  color: #1a7f37;
+}
+
+.bw-copy-failed {
+  background-color: #fdecea;
+  border-color: #b3261e;
+  color: #b3261e;
+}
+
+.bw-group-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #dfe3e8;
+}
+
+.bw-members {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.bw-members th,
+.bw-members td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bw-members th {
+  background-color: #f0f4f8;
+  color: #444;
+}
+
+.bw-members code {
+  font-family: monospace;
+  font-size: 1.05em;
+}
+
+.bw-note {
+  font-size: 0.9em;
+  color: #555;
+  margin: 8px 0;
+}
+
+.bw-error {
+  color: #b3261e;
+}
+
+@media (max-width: 768px) {
+  .bw-group-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bw-members th:first-child,
+  .bw-members td:first-child {
+    white-space: nowrap;
+  }
+}

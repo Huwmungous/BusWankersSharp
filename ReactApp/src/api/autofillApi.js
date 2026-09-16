@@ -6,6 +6,8 @@
 // holly's nginx to the UploaderService backend running on intelligence. See
 // ops/nginx/buswankers-api.inc. Fixed from the domain root rather than built off
 // PUBLIC_URL, since this API isn't served under /buswankers/ itself.
+import { parseAutofillCsv } from '../bookmarklet';
+
 export const API_BASE = '/buswankers-api/api/autofill';
 
 // UploaderService always answers with a JSON { error } body, so a non-JSON
@@ -112,6 +114,20 @@ export async function fetchRunningOrder() {
   const body = await response.json();
   if (!body || typeof body.year !== 'number') return null;
   return { ...body, entries: Array.isArray(body.entries) ? body.entries : [] };
+}
+
+// Fetch a stored autofill file and parse it into its groups (see
+// src/bookmarklet.js) - what the Documentation tab builds the per-group
+// bookmarklets and copy/paste tables from. Same public route the Download
+// button uses; null if the file isn't in the store.
+export async function fetchAutofillGroups(filename) {
+  const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
+  }
+  const text = await response.text();
+  return parseAutofillCsv(text);
 }
 
 // Public download URL for a stored autofill file (no password needed).

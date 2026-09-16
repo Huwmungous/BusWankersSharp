@@ -180,3 +180,75 @@
     height: auto;
   }
 }
+
+/* Bookmarklet-first instructions (2026-09-16) */
+.doc-section .doc-steps {
+  max-width: 760px;
+  margin: 20px auto;
+  text-align: left;
+}
+
+.doc-section .doc-steps h3 {
+  color: #2c3e50;
+  border-bottom: 2px solid #1a7f37;
+  padding-bottom: 6px;
+  margin-top: 28px;
+}
+
+.doc-section .doc-steps ol {
+  padding-left: 22px;
+}
+
+.doc-section .doc-steps li {
+  margin: 8px 0;
+}
+
+.doc-section kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid #b8c2cc;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background-color: #f7f9fb;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.doc-section .doc-fallback {
+  background-color: #f0f7ff;
+  border: 1px solid #b3d1f0;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.doc-section .doc-alt {
+  max-width: 760px;
+  margin: 30px auto;
+  text-align: left;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  background-color: #fafafa;
+}
+
+.doc-section .doc-alt summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.doc-section .doc-alt-body {
+  padding: 0 16px 16px;
+}
+
+.doc-section .doc-warning {
+  background-color: #fff4e5;
+  border: 1px solid #f0b429;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #5c3d00;
+}
+
+.doc-section .download-inline {
+  padding: 8px 16px;
+}
