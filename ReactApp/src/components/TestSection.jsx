@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import './TestSection.css';
 
+const pub = process.env.PUBLIC_URL;
+
 // Mirrors Common/BusWankers.cs DEFAULT_MAX_IN_A_GROUP - one "main" registration
 // plus up to 5 additional, for a maximum of 6 people per group/coach.
 const MAX_IN_A_GROUP = 6;
@@ -73,6 +75,15 @@ const TestSection = ({ year }) => {
           <strong>Proceed</strong> to see exactly what the form holds. If you use the AutoFill
           Options extension instead, choosing your group&rsquo;s profile there fills the same boxes.
         </p>
+
+        <div className="real-copy-callout">
+          <strong>Want the real thing?</strong> We also serve a saved copy of the actual See Tickets registration page
+          (captured during the 2023 sale, with its original markup and styling):{' '}
+          <a href={`${pub}/test_page.html`} target="_blank" rel="noopener noreferrer">
+            open the See Tickets page copy
+          </a>{' '}
+          in a new tab and click your bookmark there. Nothing on it is submitted anywhere.
+        </div>
 
         <form ref={formRef} className="form-container" onSubmit={handleSubmit} autoComplete="off">
           <h3>Your Details</h3>

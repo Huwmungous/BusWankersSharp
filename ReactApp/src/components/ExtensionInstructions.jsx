@@ -75,8 +75,9 @@ const ExtensionInstructions = ({ info, isEmpty, remoteImportUrl, downloadStatus,
 
     <h3>Step 2 - try it out</h3>
     <p>
-      Go to the <a href="#test-form">Test Form tab</a> - a copy of the real registration page - and pick your group&rsquo;s profile in
-      AutoFill Options. The boxes should fill themselves in; click <strong>Proceed</strong> there to see exactly what went in. Do this
+      Go to the <a href="#test-form">Test Form tab</a>, or open the{' '}
+      <a href={`${pub}/test_page.html`} target="_blank" rel="noopener noreferrer">saved copy of the real See Tickets page</a>, and
+      pick your group&rsquo;s profile in AutoFill Options. The boxes should fill themselves in; click <strong>Proceed</strong> there to see exactly what went in. Do this
       well before the sale, and remember each fill counts towards the day&rsquo;s ten.
     </p>
 
