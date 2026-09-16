@@ -3,9 +3,9 @@ import Navigation from './components/Navigation';
 import BusWankersPage from './components/BusWankersPage';
 import './App.css';
 
-// One page now - Documentation, Test Form and Upload all live as sections on
-// it (see BusWankersPage). No router needed for a single page; in-page anchor
-// links (#test-section / #upload-section) handle jumping around it.
+// One page with tabs (see src/tabs.js and BusWankersPage). No router: the
+// active tab is the URL hash (#documentation, #test-form, ...), so tabs are
+// bookmarkable and plain <a href="#..."> links switch between them.
 function App() {
   return (
     <div className="App">

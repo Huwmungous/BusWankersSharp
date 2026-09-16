@@ -1,31 +1,58 @@
 import React from 'react';
+import { TABS, useActiveTab } from '../tabs';
+import { WHATSAPP_GROUP_URL } from '../links';
 import './Navigation.css';
 
-// Everything lives on one page now, so these are in-page anchor jumps to the
-// page's sections rather than routes. "Update Files" is the upload bar that
-// ingests a spreadsheet into the live autofill files; "Generate Autofill" is
-// the one-off generate-and-download form at the bottom that doesn't.
+// The tab bar. Each entry is a real link to the tab's hash (#documentation,
+// #test-form, ...) so tabs are bookmarkable and the browser back button
+// walks between them; useActiveTab is what highlights the current one and
+// what BusWankersPage uses to decide which tab body to show. The WhatsApp
+// shortcut sits at the far end, and only when a link is configured.
 const Navigation = () => {
+  const [activeTab, selectTab] = useActiveTab();
+
+  const onTabClick = (e, id) => {
+    e.preventDefault();
+    selectTab(id);
+  };
+
   return (
-    <nav className="navigation">
+    <nav className="navigation" aria-label="Page sections">
       <div className="nav-container">
-        <a href="#top" className="nav-logo">Bus Wankers</a>
-        <ul className="nav-menu">
-          <li className="nav-item">
-            <a href="#ingest-bar" className="nav-link">Update Files</a>
-          </li>
-          <li className="nav-item">
-            <a href="#running-order" className="nav-link">Running Order</a>
-          </li>
-          <li className="nav-item">
-            <a href="#top" className="nav-link">Documentation</a>
-          </li>
-          <li className="nav-item">
-            <a href="#test-section" className="nav-link">Test Form</a>
-          </li>
-          <li className="nav-item">
-            <a href="#upload-section" className="nav-link">Generate Autofill</a>
-          </li>
+        <a href="#documentation" className="nav-logo" onClick={(e) => onTabClick(e, 'documentation')}>
+          Bus Wankers
+        </a>
+        <ul className="nav-menu" role="tablist">
+          {TABS.map((tab) => {
+            const active = tab.id === activeTab;
+            return (
+              <li key={tab.id} className="nav-item" role="presentation">
+                <a
+                  href={`#${tab.id}`}
+                  className={`nav-link${active ? ' nav-link-active' : ''}`}
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={`tab-${tab.id}`}
+                  onClick={(e) => onTabClick(e, tab.id)}
+                >
+                  {tab.label}
+                </a>
+              </li>
+            );
+          })}
+          {WHATSAPP_GROUP_URL && (
+            <li className="nav-item nav-item-whatsapp" role="presentation">
+              <a
+                href={WHATSAPP_GROUP_URL}
+                className="nav-link nav-link-whatsapp"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open the Bus Wankers WhatsApp group"
+              >
+                WhatsApp
+              </a>
+            </li>
+          )}
         </ul>
       </div>
     </nav>

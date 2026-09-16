@@ -137,7 +137,7 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
           <p className="sale-picker-note">
             {storeStatus === 'loading' && 'Checking which autofill files are available…'}
             {storeStatus === 'error' && `Couldn't check the autofill files: ${storeError}`}
-            {storeStatus === 'ready' && isEmpty && 'No autofill file has been ingested for this sale yet - upload a spreadsheet at the top of the page.'}
+            {storeStatus === 'ready' && isEmpty && 'No autofill file has been ingested for this sale yet - upload a spreadsheet on the Update Files tab.'}
             {storeStatus === 'ready' && !isEmpty && `${info.filename} - last updated ${formatWhen(stored.lastModified)}`}
           </p>
           {downloadStatus === 'error' && <p className="sale-picker-note sale-picker-error">{downloadError}</p>}
@@ -205,7 +205,7 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
 
         <h4>
           You Can Test Your AutoFill on a mockup of the Glasto Registration Form{' '}
-          <a href="#test-section">further down this page</a>.
+          on the <a href="#test-form">Test Form tab</a>.
         </h4>
 
         <h4>Becca Productions Inc.</h4>

@@ -6,11 +6,11 @@ const formatWhen = (iso) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
-// The "Glasto nnnn Running Order": everyone on the workbook's roster sheet
-// (the "Glasto nnnn" tab, named for the festival year) as of the last ingest,
-// in surname order, with their reg number. Collapsed by default - it's a long
-// list and most visitors are here for the autofill file below - and rendered
-// as a native <details> so it needs no state of its own.
+// The "Glasto nnnn Running Order" tab: everyone on the workbook's roster
+// sheet (the "Glasto nnnn" tab, named for the festival year) as of the last
+// ingest, in surname order, with their reg number. Rendered as a native
+// <details> (open by default now it has a tab of its own) so it can still be
+// collapsed and needs no state of its own.
 //
 // runningOrder: { year, sheet, generatedAt, entries: [{ regNumber, firstName,
 // lastName, name }] } from GET /running-order, or null when no roster has been
@@ -27,14 +27,14 @@ const RunningOrderSection = ({ year, runningOrder = null, status = 'loading', er
   } else if (status === 'error') {
     note = `Couldn't load the running order: ${error}`;
   } else if (!runningOrder) {
-    note = `No 'Glasto ${year}' worksheet has been ingested yet - upload a spreadsheet at the top of the page.`;
+    note = `No 'Glasto ${year}' worksheet has been ingested yet - upload a spreadsheet on the Update Files tab.`;
   } else if (count === 0) {
     note = `'${runningOrder.sheet}' has nobody with a Reg Number on it.`;
   }
 
   return (
-    <section className="running-order" id="running-order" aria-label={title}>
-      <details className="running-order-details">
+    <section className="running-order" aria-label={title}>
+      <details className="running-order-details" open>
         <summary className="running-order-summary">
           <span className="running-order-title">{title}</span>
           {runningOrder && count > 0 && (

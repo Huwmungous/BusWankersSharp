@@ -20,10 +20,10 @@ const rosterAsResult = (ro) => ({
 // The upload button at the very top of the page. Pick a registration
 // workbook, give the shared password, and every sale sheet in it is ingested
 // into the live autofill files in one go (an emptied sale sheet removes its
-// file), and the roster sheet becomes the running order - the sections just
-// below refresh themselves off the result via onIngested. This is the
-// "publish" path; the generate-and-download form at the bottom of the page is
-// the "just give me the file" path and leaves the live files alone.
+// file), and the roster sheet becomes the running order - the other tabs
+// refresh themselves off the result via onIngested. (The old one-off
+// generate-and-download form was dropped from the page on 2026-09-16; the
+// backend's /sheets and /generate routes still exist if it's ever wanted.)
 const IngestBar = ({ onIngested }) => {
   const [password, setPassword] = useState('');
   const [file, setFile] = useState(null);

@@ -8,6 +8,7 @@
 .running-order .running-order-details {
   max-width: 1200px;
   margin: 0 auto;
+  text-align: left; /* the App shell centres text; a list reads better ragged-right */
 }
 
 .running-order .running-order-summary {
