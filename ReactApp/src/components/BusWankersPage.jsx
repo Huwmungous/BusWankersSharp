@@ -3,21 +3,25 @@ import DocumentationSection from './DocumentationSection';
 import IngestBar from './IngestBar';
 import RunningOrderSection from './RunningOrderSection';
 import TestSection from './TestSection';
-import UploadSection from './UploadSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
 import { DEFAULT_YEAR } from '../festival';
+import { useActiveTab } from '../tabs';
 import './BusWankersPage.css';
 
-// The whole site is one page: upload a spreadsheet at the very top to refresh
-// the live autofill files, see who's on this year's roster just below that,
-// pick your autofill file, test it further down, and (password-protected)
-// generate a one-off file from a spreadsheet at the bottom. Each section owns
-// its own styling/markup - this lays them out in order and owns the state
-// they share: which autofill files actually exist in the backend's store
-// right now (so the dropdown can flag empty ones and an ingest can refresh
-// it), and the roster from the last ingest, which is where the festival year
-// the whole page talks about comes from.
+// The site is one page with four tabs (see src/tabs.js): Update Files (upload
+// a spreadsheet to refresh the live autofill files), Documentation (the
+// landing tab - pick and download your autofill file), Running Order (who's
+// on this year's roster) and Test Form (a mockup of the registration form).
+//
+// Every tab body stays mounted and is simply hidden when not selected, so
+// switching tabs never throws away what's in them - the upload bar's result
+// list, a half-filled test form - and the shared state here is fetched once:
+// which autofill files actually exist in the backend's store right now (so
+// the dropdown can flag empty ones and an ingest can refresh it), and the
+// roster from the last ingest, which is where the festival year the whole
+// page talks about comes from.
 const BusWankersPage = () => {
+  const [activeTab] = useActiveTab();
   const [storedFiles, setStoredFiles] = useState(new Map());
   const [storeStatus, setStoreStatus] = useState('loading'); // loading | ready | error
   const [storeError, setStoreError] = useState('');
@@ -63,18 +67,32 @@ const BusWankersPage = () => {
   // otherwise the fallback, so nothing ever renders "Glastonbury undefined".
   const year = runningOrder && Number.isInteger(runningOrder.year) ? runningOrder.year : DEFAULT_YEAR;
 
+  const tabProps = (id) => ({
+    id: `tab-${id}`,
+    className: 'tab-panel',
+    role: 'tabpanel',
+    hidden: activeTab !== id,
+  });
+
   return (
     <div className="bus-wankers-page" id="top">
-      <IngestBar onIngested={refreshStore} />
-      <RunningOrderSection
-        year={year}
-        runningOrder={runningOrder}
-        status={runningOrderStatus}
-        error={runningOrderError}
-      />
-      <DocumentationSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
-      <TestSection year={year} />
-      <UploadSection />
+      <div {...tabProps('update-files')}>
+        <IngestBar onIngested={refreshStore} />
+      </div>
+      <div {...tabProps('documentation')}>
+        <DocumentationSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
+      </div>
+      <div {...tabProps('running-order')}>
+        <RunningOrderSection
+          year={year}
+          runningOrder={runningOrder}
+          status={runningOrderStatus}
+          error={runningOrderError}
+        />
+      </div>
+      <div {...tabProps('test-form')}>
+        <TestSection year={year} />
+      </div>
     </div>
   );
 };

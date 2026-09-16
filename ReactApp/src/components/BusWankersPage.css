@@ -1,5 +1,7 @@
-/* Section separators between the doc/test/upload sections that make up the
-   single page - the sections' own CSS files own everything inside them. */
-.bus-wankers-page > section + section {
-  border-top: 4px solid #2c3e50;
+/* One tab body is shown at a time (BusWankersPage sets `hidden` on the
+   others); the sections' own CSS files own everything inside them. The
+   [hidden] rule is belt-and-braces against a section's display rule
+   overriding the attribute. */
+.bus-wankers-page .tab-panel[hidden] {
+  display: none;
 }

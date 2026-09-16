@@ -12,33 +12,37 @@ which have since been removed from the repo.
 
 ## What's on the page
 
-Top to bottom (all one page - the nav bar links are in-page anchors):
+One page, four tabs (`src/tabs.js`). The active tab is the URL hash
+(`#documentation`, `#test-form`, ...) so tabs are bookmarkable and plain in-page
+links switch between them; every tab body stays mounted, so switching tabs never
+loses an upload result or a half-filled test form. **Documentation is the landing
+tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
+`WHATSAPP_GROUP_URL` in `src/links.js` is set (it's hidden while that's empty).
 
-1. **Upload bar** (`IngestBar`) - choose a registration workbook, enter the shared
+1. **Update Files** (`IngestBar`) - choose a registration workbook, enter the shared
    password, click *Upload & Ingest*. Every sale sheet in the workbook is generated
    and written into the live autofill files in one go (a sale sheet that has been
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
-   the sections below refresh.
-2. **Running order** (`RunningOrderSection`) - a collapsible *Glasto nnnn Running
-   Order* list: everyone on the workbook's `Glasto nnnn` roster tab (reg number +
-   name, surname order) as of the last ingest. `nnnn` is the festival year, read
-   from that tab's name, and is what every other "2027"-style mention on the page
-   uses (`src/festival.js` holds the fallback for a store with no roster yet).
-3. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
+   the other tabs refresh.
+2. **Documentation** (`DocumentationSection`) - a dropdown of the autofill files
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), each with
    its own key dates, cost info where known, and the Remote Import URL to paste into
    AutoFill Options. A sale with nothing ingested yet reads `(empty)`; the
    **Download** button next to the dropdown (and the "this link" download in the
    text) is disabled for it.
-4. **Test form** (`TestSection`) - a mockup of the Glastonbury registration form with
+3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
+   everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
+   order) as of the last ingest. `nnnn` is the festival year, read from that tab's
+   name, and is what every other "2027"-style mention on the page uses
+   (`src/festival.js` holds the fallback for a store with no roster yet).
+4. **Test Form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
    6 people per group, matching `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so
    the extension's profile can be tested end-to-end before the real sale.
-5. **Generate a one-off file** (`UploadSection`) - upload a spreadsheet, pick one
-   sale sheet, get that sale's autofill file straight back as a download. This does
-   **not** touch the live files - it's for checking a spreadsheet or handing a file
-   to someone directly. Use the upload bar at the top to publish.
+
+The old "generate a one-off file" form was removed from the page on 2026-09-16; the
+backend's `POST /sheets` / `POST /generate` routes it used are still there.
 
 ## Where the autofill files live and how they're downloaded
 
@@ -66,7 +70,7 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 | `GET  /files`                | none     | dropdown - which files exist, size, last modified  |
 | `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
 | `GET  /running-order`        | none     | running order list + festival year (404 until ingested) |
-| `POST /sheets`, `POST /generate` | password | one-off generate section                       |
+| `POST /sheets`, `POST /generate` | password | (no longer used by the page - kept for scripting) |
 
 Two ways a user gets a file, both served by `GET /files/{filename}`:
 
@@ -105,12 +109,15 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 
 ## Files Structure
 
-- `src/App.jsx` - App shell: `Navigation` + `BusWankersPage`. No router - one page,
-  in-page anchors
-- `src/components/Navigation.jsx` - Top nav bar of anchor links to the page sections
-- `src/components/BusWankersPage.jsx` - Lays out the four sections in order and owns
-  the one bit of shared state: the map of files currently in the backend store
-  (fetched from `GET /files`, refreshed after an ingest)
+- `src/App.jsx` - App shell: `Navigation` + `BusWankersPage`. No router - the tab is
+  the URL hash
+- `src/tabs.js` - The tab list and the `useActiveTab` hook (hash-driven)
+- `src/links.js` - `WHATSAPP_GROUP_URL` for the nav bar's WhatsApp shortcut
+- `src/components/Navigation.jsx` / `.css` - The tab bar (+ WhatsApp button)
+- `src/components/BusWankersPage.jsx` - Renders the four tab bodies (hiding all but
+  the active one) and owns the shared state: the map of files currently in the
+  backend store (fetched from `GET /files`, refreshed after an ingest) and the
+  running order / festival year (`GET /running-order`)
 - `src/festival.js` - `DEFAULT_YEAR`, the fallback festival year when no roster
   has been ingested
 - `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
@@ -122,10 +129,9 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
   sale sheet needs an entry here to appear in the dropdown (the backend handles any
   sheet name without a code change)
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
-- `src/components/UploadSection.jsx` / `.css` - One-off generate-and-download form
-  (`POST /sheets` then `POST /generate`)
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
-  reading, `fetchStoredFiles`, `ingestWorkbook`, `downloadStoredFile`, `saveBlob`)
+  reading, `fetchStoredFiles`, `fetchRunningOrder`, `ingestWorkbook`,
+  `downloadStoredFile`, `saveBlob`)
 - `src/index.js` - Entry point
 - `public/` - Static assets referenced by the page: the screenshots (`Hippies_1.png`,
   `sync.png`, `formfield.png`, ...) and `DannyVid.mp4`. No autofill files belong here
