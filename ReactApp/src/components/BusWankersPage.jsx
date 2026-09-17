@@ -33,6 +33,12 @@ const BusWankersPage = () => {
   const [runningOrder, setRunningOrder] = useState(null);
   const [runningOrderStatus, setRunningOrderStatus] = useState('loading'); // loading | ready | error
   const [runningOrderError, setRunningOrderError] = useState('');
+  // Which sale (Coach/General/...) the page is currently looking at. Lifted
+  // up here - rather than each tab keeping its own - so the Groups tab's
+  // fallback view always starts on whatever sale is selected on the
+  // Documentation tab, and picking a different sale in either place moves
+  // both (they're both permanently mounted, just hidden - see tabProps).
+  const [saleType, setSaleType] = useState('Coach');
 
   const refreshStore = useCallback(async () => {
     // The two fetches are independent: a running-order problem must not hide
@@ -85,10 +91,24 @@ const BusWankersPage = () => {
         <IngestBar onIngested={refreshStore} />
       </div>
       <div {...tabProps('documentation')}>
-        <DocumentationSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
+        <DocumentationSection
+          year={year}
+          storedFiles={storedFiles}
+          storeStatus={storeStatus}
+          storeError={storeError}
+          saleType={saleType}
+          onSaleTypeChange={setSaleType}
+        />
       </div>
       <div {...tabProps('groups')}>
-        <GroupsSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
+        <GroupsSection
+          year={year}
+          storedFiles={storedFiles}
+          storeStatus={storeStatus}
+          storeError={storeError}
+          saleType={saleType}
+          onSaleTypeChange={setSaleType}
+        />
       </div>
       <div {...tabProps('running-order')}>
         <RunningOrderSection

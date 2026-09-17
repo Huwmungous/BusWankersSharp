@@ -72,9 +72,18 @@ const GroupRow = ({ group }) => {
 //
 // storedFiles/storeStatus/storeError come from BusWankersPage's shared store
 // (see useAutofillGroups) - the same data the Documentation tab reads, so
-// the two never disagree about which sales are loaded.
-const GroupsSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
-  const [saleType, setSaleType] = useState('Coach');
+// the two never disagree about which sales are loaded. saleType/
+// onSaleTypeChange are lifted up to BusWankersPage too, rather than kept
+// here, so this tab defaults to (and stays in step with) whichever sale is
+// currently selected on the Documentation tab.
+const GroupsSection = ({
+  year = DEFAULT_YEAR,
+  storedFiles = new Map(),
+  storeStatus = 'loading',
+  storeError = '',
+  saleType = 'Coach',
+  onSaleTypeChange = () => {},
+}) => {
   const info = SALE_INFO[saleType];
   const { groups, status, error, isEmpty, stored } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
 
@@ -93,7 +102,7 @@ const GroupsSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), storeStat
             id="groupsSaleType"
             className="form-input"
             value={saleType}
-            onChange={(e) => setSaleType(e.target.value)}
+            onChange={(e) => onSaleTypeChange(e.target.value)}
           >
             {Object.entries(SALE_INFO).map(([key, tab]) => {
               const f = storedFiles.get(tab.filename);

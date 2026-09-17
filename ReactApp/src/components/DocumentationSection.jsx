@@ -38,8 +38,17 @@ const readSavedMethod = () => {
   }
 };
 
-const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), storeStatus = 'loading', storeError = '' }) => {
-  const [saleType, setSaleType] = useState('Coach');
+// saleType/onSaleTypeChange: lifted up to BusWankersPage (rather than local
+// state here) so the Groups tab's fallback view defaults to whatever sale is
+// currently selected here, and either tab changing it moves both.
+const DocumentationSection = ({
+  year = DEFAULT_YEAR,
+  storedFiles = new Map(),
+  storeStatus = 'loading',
+  storeError = '',
+  saleType = 'Coach',
+  onSaleTypeChange = () => {},
+}) => {
   const [method, setMethod] = useState(readSavedMethod); // bookmark | extension
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
@@ -101,7 +110,7 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
               id="saleType"
               className="form-input"
               value={saleType}
-              onChange={(e) => { setSaleType(e.target.value); setDownloadStatus('idle'); setDownloadError(''); }}
+              onChange={(e) => { onSaleTypeChange(e.target.value); setDownloadStatus('idle'); setDownloadError(''); }}
             >
               {Object.entries(SALE_INFO).map(([key, tab]) => {
                 const f = storedFiles.get(tab.filename);
