@@ -54,6 +54,22 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    client-side from the SAME autofill CSV the extension uses (parsed by
    `parseAutofillCsv`), so there is no backend change and both routes stay in step.
    Verified against a saved copy of the real 2023 `gfl/addregistrations` page.
+
+   **Data-driven versioning (2026-09-17):** because a bookmark, once imported into
+   a real browser, is a static copy that can't know when the autofill file behind
+   it changes, every bookmarklet/folder/filename is stamped with the SAME
+   `lastModified` timestamp the backend already returns from `GET /files` (see
+   `fetchStoredFiles`, `useAutofillGroups`, and the existing "Groups last updated"
+   text) - turned into a short, filename-safe token by `versionStamp()`, e.g.
+   `17 Sep 14.02`. It shows up in the bookmark's own title, in the downloaded
+   folder/file name, and in the fill-confirmation banner the bookmarklet itself
+   shows on click. `DocumentationSection` also remembers (localStorage, per sale)
+   the version last actually downloaded and compares it against the live one on
+   every visit, showing a `doc-warning` banner when they differ - all without any
+   network call from the bookmarklet itself, so the no-network sale-day guarantee
+   above is unchanged. Re-downloading when nothing changed reproduces the exact
+   same stamp (it's keyed off the data's own timestamp, not `Date.now()`), so it
+   never manufactures a false "stale" duplicate.
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
    order) as of the last ingest. `nnnn` is the festival year, read from that tab's
