@@ -7,10 +7,11 @@ import './GroupsSection.css';
 
 // Plain-text rendering of one group, for the "Copy whole group" button - one
 // line per person, tab-separated so it also pastes cleanly into a
-// spreadsheet. Slot 0 is always "Your Details" to match the registration
-// form's own wording (see GroupFillPanel/bookmarklet).
+// spreadsheet. Slot 0 is always "Lead Booker" - our own label for whoever's
+// account does the booking (the actual See Tickets form just says "Your
+// Details" for that slot; see TestSection/test_page.html).
 const groupAsText = (group) =>
-  group.members.map((m, i) => `${i === 0 ? 'Your Details' : `#${i}`}\t${m.registrationId}\t${m.postCode}`).join('\n');
+  group.members.map((m, i) => `${i === 0 ? 'Lead Booker' : `#${i}`}\t${m.registrationId}\t${m.postCode}`).join('\n');
 
 // A "copy the whole group" button, separate from the per-field CopyButtons
 // below it because it copies a multi-line block rather than one value - the
@@ -52,7 +53,7 @@ const GroupRow = ({ group }) => {
         <tbody>
           {group.members.map((m, i) => (
             <tr key={`${m.registrationId}-${i}`}>
-              <td>{i === 0 ? 'Your Details' : `#${i}`}</td>
+              <td>{i === 0 ? 'Lead Booker' : `#${i}`}</td>
               <td><code>{m.registrationId}</code> <CopyButton text={m.registrationId} /></td>
               <td><code>{m.postCode}</code> <CopyButton text={m.postCode} /></td>
             </tr>

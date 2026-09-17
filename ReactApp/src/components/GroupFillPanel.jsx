@@ -95,7 +95,7 @@ const GroupCard = ({ group, year, onTried }) => {
         <div className="bw-group-details">
           <p className="bw-note">
             If you can&rsquo;t use a bookmark (on a phone, say), copy each value from here into the matching box.
-            Slot 0 is &ldquo;Your Details&rdquo;; #1 onwards are the additional registrations.
+            Slot 0 is &ldquo;Lead Booker&rdquo;; #1 onwards are the additional registrations.
           </p>
           <table className="bw-members">
             <thead>
@@ -104,7 +104,7 @@ const GroupCard = ({ group, year, onTried }) => {
             <tbody>
               {group.members.map((m, i) => (
                 <tr key={`${m.registrationId}-${i}`}>
-                  <td>{i === 0 ? 'Your Details' : `#${i}`}</td>
+                  <td>{i === 0 ? 'Lead Booker' : `#${i}`}</td>
                   <td><code>{m.registrationId}</code> <CopyButton text={m.registrationId} /></td>
                   <td><code>{m.postCode}</code> <CopyButton text={m.postCode} /></td>
                 </tr>
