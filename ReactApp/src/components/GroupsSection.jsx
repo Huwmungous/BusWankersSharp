@@ -1,25 +1,29 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CopyButton, copyText } from './GroupFillPanel';
 import { useAutofillGroups } from '../useAutofillGroups';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { DEFAULT_YEAR } from '../festival';
+import { buildNameLookup, nameForRegistration } from '../runningOrder';
 import './GroupsSection.css';
 
 // Plain-text rendering of one group, for the "Copy whole group" button - one
 // line per person, tab-separated so it also pastes cleanly into a
 // spreadsheet. Slot 0 is always "Lead Booker" - our own label for whoever's
 // account does the booking (the actual See Tickets form just says "Your
-// Details" for that slot; see TestSection/test_page.html).
-const groupAsText = (group) =>
-  group.members.map((m, i) => `${i === 0 ? 'Lead Booker' : `#${i}`}\t${m.registrationId}\t${m.postCode}`).join('\n');
+// Details" for that slot; see TestSection/test_page.html). nameLookup: see
+// runningOrder.js - blank when there's no roster entry for a reg number.
+const groupAsText = (group, nameLookup) =>
+  group.members
+    .map((m, i) => `${i === 0 ? 'Lead Booker' : `#${i}`}\t${nameForRegistration(nameLookup, m.registrationId)}\t${m.registrationId}\t${m.postCode}`)
+    .join('\n');
 
 // A "copy the whole group" button, separate from the per-field CopyButtons
 // below it because it copies a multi-line block rather than one value - the
 // success/failure feedback would be misleading shared with them.
-const CopyGroupButton = ({ group }) => {
+const CopyGroupButton = ({ group, nameLookup }) => {
   const [state, setState] = useState('idle'); // idle | copied | failed
   const onClick = async () => {
-    const ok = await copyText(groupAsText(group));
+    const ok = await copyText(groupAsText(group, nameLookup));
     setState(ok ? 'copied' : 'failed');
     setTimeout(() => setState('idle'), 2000);
   };
@@ -35,7 +39,11 @@ const CopyGroupButton = ({ group }) => {
 // isn't working (browser blocked it, phone with no bookmarks bar, laptop
 // died and you're on someone else's), everything needed to type the six
 // boxes by hand - or paste them one at a time - is right here.
-const GroupRow = ({ group }) => {
+//
+// nameLookup: registration number -> "First Last" from the ingested roster
+// (see runningOrder.js) - purely a display convenience, blank when there's
+// no roster entry for a reg number.
+const GroupRow = ({ group, nameLookup }) => {
   const count = group.members.length;
   return (
     <li className="groups-group">
@@ -44,16 +52,17 @@ const GroupRow = ({ group }) => {
           <strong>Group {group.label}</strong>
           <span className="groups-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
         </div>
-        <CopyGroupButton group={group} />
+        <CopyGroupButton group={group} nameLookup={nameLookup} />
       </div>
       <table className="groups-members">
         <thead>
-          <tr><th>Slot</th><th>Registration Number</th><th>Postcode</th></tr>
+          <tr><th>Slot</th><th>Name</th><th>Registration Number</th><th>Postcode</th></tr>
         </thead>
         <tbody>
           {group.members.map((m, i) => (
             <tr key={`${m.registrationId}-${i}`}>
               <td>{i === 0 ? 'Lead Booker' : `#${i}`}</td>
+              <td>{nameForRegistration(nameLookup, m.registrationId) || '—'}</td>
               <td><code>{m.registrationId}</code> <CopyButton text={m.registrationId} /></td>
               <td><code>{m.postCode}</code> <CopyButton text={m.postCode} /></td>
             </tr>
@@ -76,7 +85,8 @@ const GroupRow = ({ group }) => {
 // the two never disagree about which sales are loaded. saleType/
 // onSaleTypeChange are lifted up to BusWankersPage too, rather than kept
 // here, so this tab defaults to (and stays in step with) whichever sale is
-// currently selected on the Documentation tab.
+// currently selected on the Documentation tab. runningOrder: the ingested
+// roster, used only to fill in the Name column (see runningOrder.js).
 const GroupsSection = ({
   year = DEFAULT_YEAR,
   storedFiles = new Map(),
@@ -84,9 +94,11 @@ const GroupsSection = ({
   storeError = '',
   saleType = 'Coach',
   onSaleTypeChange = () => {},
+  runningOrder = null,
 }) => {
   const info = SALE_INFO[saleType];
   const { groups, status, error, isEmpty, stored } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
+  const nameLookup = useMemo(() => buildNameLookup(runningOrder), [runningOrder]);
 
   return (
     <section className="groups-section" aria-label="Groups - copy and paste fallback">
@@ -136,7 +148,7 @@ const GroupsSection = ({
         {status === 'ready' && groups && groups.length > 0 && (
           <ul className="groups-list">
             {groups.map((g) => (
-              <GroupRow key={g.code} group={g} />
+              <GroupRow key={g.code} group={g} nameLookup={nameLookup} />
             ))}
           </ul>
         )}

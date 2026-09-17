@@ -98,6 +98,7 @@ const BusWankersPage = () => {
           storeError={storeError}
           saleType={saleType}
           onSaleTypeChange={setSaleType}
+          runningOrder={runningOrder}
         />
       </div>
       <div {...tabProps('groups')}>
@@ -108,6 +109,7 @@ const BusWankersPage = () => {
           storeError={storeError}
           saleType={saleType}
           onSaleTypeChange={setSaleType}
+          runningOrder={runningOrder}
         />
       </div>
       <div {...tabProps('running-order')}>
