@@ -32,7 +32,10 @@ const BookmarkletLink = ({ group, year }) => {
   );
 };
 
-const copyText = async (text) => {
+// Exported alongside CopyButton so GroupsSection (the standalone copy/paste
+// fallback tab) can offer the same one-click clipboard behaviour without a
+// second implementation of it drifting out of step with this one.
+export const copyText = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -41,7 +44,7 @@ const copyText = async (text) => {
   }
 };
 
-const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => {
+export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => {
   const [state, setState] = useState('idle'); // idle | copied | failed
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
