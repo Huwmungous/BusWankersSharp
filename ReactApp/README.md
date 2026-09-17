@@ -29,13 +29,18 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
    browser in localStorage, default Bookmark):
-   - **Bookmark** - a *Download "Glasto <Sale> Bookmarks"* button produces a
-     standard bookmarks HTML file (`bookmarkFolderHtml`) that imports as one
-     folder holding a bookmark per group, with per-browser import steps; below
-     it, each group also has a draggable **Glasto nnnn - Fill Group X**
-     bookmarklet, a *Try it on the Test Form* button, and (collapsed) a
-     copy/paste table of the group's reg numbers and postcodes
-     (`GroupFillPanel`).
+   - **Bookmark** - the primary route is a single draggable **Glasto nnnn -
+     Fill My Group (Sale)** bookmarklet (`SaleBookmarklet`) that covers every
+     group: drag it once, and on click it shows a tap-to-choose picker for
+     the person's own group before filling (see "One bookmark for the WHOLE
+     sale" below). Behind an "advanced options" `<details>`, the older routes
+     are still there for anyone who wants them: a *Download "Glasto \<Sale\>
+     Bookmarks"* button producing a standard bookmarks HTML file
+     (`bookmarkFolderHtml`) that imports as one folder holding a bookmark per
+     group, with per-browser import steps; and, below that, each group's own
+     draggable **Glasto nnnn - Fill Group X** bookmarklet, a *Try it on the
+     Test Form* button, and (collapsed) a copy/paste table of the group's reg
+     numbers and postcodes (`GroupFillPanel`).
    - **AutoFill Options extension** (`ExtensionInstructions`) - the original
      route: Download button, Remote Import URL, screenshots, video, with the free
      plan's 10-fills-a-day cap warned up front.
@@ -86,6 +91,21 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (`UploadServiceController.Ingest`) that turns a spreadsheet into groups, and
    the bookmarklet's own (deliberately old-school) JavaScript never has to parse
    CSV at all.
+
+   **One bookmark for the whole sale (2026-09-17):** a browser page cannot write
+   to the bookmarks bar itself - that's deliberately not exposed to web content
+   by any browser, which is exactly why the folder-download-then-import route
+   above needs a native "Import bookmarks from HTML" dialog to do it at all. The
+   one thing a page CAN do in a single user gesture is let someone drag ONE link
+   onto the bar, so `SaleBookmarklet`/`saleBookmarkletSource` builds a single
+   bookmarklet (`SALE_FILL_SOURCE`) covering every group in a sale: on click it
+   live-fetches (or falls back to the data embedded at generation time, on the
+   same terms as the per-group `FILL_SOURCE`) every group, then shows a plain
+   tap-to-choose overlay so the person picks their own group before it fills the
+   page. This is now the Documentation tab's primary, recommended route, with
+   the older per-group bookmarklets and the whole-folder download demoted to an
+   "advanced options" `<details>` for anyone who'd rather have a bookmark
+   already set to a specific group, or is installing on someone else's browser.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
@@ -179,13 +199,20 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
 - `src/components/RunningOrderSection.jsx` / `.css` - The collapsible
   *Glasto nnnn Running Order* list (`GET /running-order`)
-- `src/bookmarklet.js` - `parseAutofillCsv` (AutoFill CSV -> groups), `FILL_SOURCE`
-  (the fill routine embedded in every bookmarklet - live fetch of the sale's
+- `src/bookmarklet.js` - `parseAutofillCsv` (AutoFill CSV -> groups),
+  `FILL_SOURCE` / `bookmarkletHref` / `bookmarkletSource` / `bookmarkletTitle`
+  / `runFillOnThisPage` (the per-group bookmarklet: live fetch of the sale's
   groups URL with a timed fallback to the embedded data, see the file's own
-  header comment), `bookmarkletHref` / `bookmarkletSource` / `bookmarkletTitle`,
-  and `runFillOnThisPage` (runs the same routine against the Test Form tab)
-- `src/components/GroupFillPanel.jsx` / `.css` - The per-group cards on the
-  Documentation tab: draggable bookmarklet, Try-it button, copy/paste table
+  header comment), and `SALE_FILL_SOURCE` / `saleBookmarkletHref` /
+  `saleBookmarkletSource` / `saleBookmarkletTitle` / `runSaleFillOnThisPage`
+  (the single whole-sale bookmarklet - same live-fetch/fallback rules, plus
+  the tap-to-choose group picker)
+- `src/components/SaleBookmarklet.jsx` / `.css` - The single, primary
+  whole-sale bookmarklet on the Documentation tab: one draggable link, a
+  Try-it button
+- `src/components/GroupFillPanel.jsx` / `.css` - The per-group cards, now
+  under the Documentation tab's "advanced options": draggable bookmarklet,
+  Try-it button, copy/paste table
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
   dropdown, key dates, the bookmarklet steps, and the collapsed extension
   instructions. `SALE_INFO` at the top of the file is the single place that

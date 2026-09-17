@@ -327,6 +327,219 @@ export function runFillOnThisPage(group, groupsUrl = '') {
 }
 
 // ---------------------------------------------------------------------------
+// One bookmark for the WHOLE sale (2026-09-17)
+// ---------------------------------------------------------------------------
+//
+// Installing a bookmark per group, or downloading a folder and finding your
+// browser's own "Import bookmarks from HTML" menu, is still more steps than
+// some people want handed to them - and a page cannot install a bookmark
+// (or a folder of them) for you in one click; browsers deliberately don't
+// let web content write to the bookmarks bar, full stop, which is why the
+// folder route below exists at all. The one thing a page CAN do in a single
+// user gesture is let you drag ONE link onto the bar - so this is that: one
+// bookmark, covering every group in the sale. On click it live-fetches (or
+// falls back to the data embedded at generation time, on exactly the same
+// terms as FILL_SOURCE above) every group, then shows a plain tap-to-choose
+// list so the person picks their own group before it fills the page. One
+// install, one extra tap on the day - as close to "spoon-fed" as this can
+// get without asking someone to trust a browser extension.
+export const SALE_FILL_SOURCE = `
+(function(){
+  function nat(el, v) {
+    var proto = Object.getPrototypeOf(el);
+    var d = Object.getOwnPropertyDescriptor(proto, 'value') || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    if (d && d.set) { d.set.call(el, v); } else { el.value = v; }
+    try { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    catch (e) { var ev = document.createEvent('HTMLEvents'); ev.initEvent('change', true, false); el.dispatchEvent(ev); }
+  }
+  function find(i, kind) {
+    var re = new RegExp('registrations[^0-9]*' + i + '[^a-z0-9]+' + kind + '$', 'i');
+    var ins = document.querySelectorAll('input');
+    for (var k = 0; k < ins.length; k++) {
+      var e = ins[k];
+      if (re.test(e.id || '') || re.test(e.name || '')) return e;
+    }
+    return null;
+  }
+  var slots = [];
+  for (var i = 0; i < 20; i++) {
+    var r = find(i, 'registrationid'), p = find(i, 'postcode');
+    if (!r && !p) break;
+    slots.push([r, p]);
+  }
+  if (!slots.length) {
+    var regs = document.querySelectorAll('input.numeric, input[id*="egistration"], input[name*="egistration"]');
+    var posts = document.querySelectorAll('input.postcode, input[id*="ostcode"], input[name*="ostcode"]');
+    for (var j = 0; j < Math.max(regs.length, posts.length); j++) slots.push([regs[j] || null, posts[j] || null]);
+  }
+  if (!slots.length) {
+    alert('Bus Wankers: no registration boxes found on this page. Are you on the Glastonbury registration page?');
+    return;
+  }
+
+  function showBanner(msg, isProblem) {
+    try {
+      var old = document.getElementById('bw-fill-banner'); if (old) old.parentNode.removeChild(old);
+      var b = document.createElement('div');
+      b.id = 'bw-fill-banner';
+      b.textContent = msg + ' (click to dismiss)';
+      b.setAttribute('style', 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:' + (isProblem ? '#b3261e' : '#1a7f37') + ';color:#fff;font:15px/1.4 Arial,sans-serif;padding:12px 16px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer');
+      b.onclick = function () { if (b.parentNode) b.parentNode.removeChild(b); };
+      document.body.appendChild(b);
+      setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 15000);
+    } catch (e) { alert(msg); }
+  }
+
+  function fillWithData(label, members, source) {
+    var filled = 0;
+    for (var s = 0; s < slots.length; s++) {
+      var m = members[s] || ['', ''];
+      if (slots[s][0]) nat(slots[s][0], m[0]);
+      if (slots[s][1]) nat(slots[s][1], m[1]);
+      if (m[0] && slots[s][0]) filled++;
+    }
+    var missing = members.length > slots.length ? members.slice(slots.length) : [];
+    var msg = 'Bus Wankers - Group ' + label + ' (' + source + '): filled ' + filled + ' of ' + members.length + ' people.';
+    if (missing.length) {
+      msg += ' This page only has ' + slots.length + ' slots, so NOT entered: ' + missing.map(function (x) { return x[0]; }).join(', ') + '.';
+    }
+    msg += ' Check the boxes, then click Proceed.';
+    showBanner(msg, missing.length > 0);
+  }
+
+  function removePicker() {
+    var old = document.getElementById('bw-picker');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+  }
+
+  function showPicker(groups, source) {
+    removePicker();
+    var overlay = document.createElement('div');
+    overlay.id = 'bw-picker';
+    overlay.setAttribute('style', 'position:fixed;z-index:2147483647;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:15px/1.4 Arial,sans-serif;padding:16px;box-sizing:border-box;');
+    var box = document.createElement('div');
+    box.setAttribute('style', 'background:#fff;color:#222;border-radius:10px;padding:18px;max-width:340px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 8px 28px rgba(0,0,0,.45);box-sizing:border-box;');
+    var title = document.createElement('div');
+    title.textContent = 'Bus Wankers - which group are you?';
+    title.setAttribute('style', 'font-weight:bold;font-size:1.05em;margin-bottom:4px;');
+    box.appendChild(title);
+    var sub = document.createElement('div');
+    sub.textContent = 'Tap your group below (' + source + ').';
+    sub.setAttribute('style', 'color:#666;margin-bottom:12px;font-size:13px;');
+    box.appendChild(sub);
+    var list = document.createElement('div');
+    list.setAttribute('style', 'display:flex;flex-direction:column;gap:6px;');
+    for (var gi = 0; gi < groups.length; gi++) {
+      (function (g) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Group ' + g.label + ' (' + g.members.length + (g.members.length === 1 ? ' person' : ' people') + ')';
+        btn.setAttribute('style', 'display:block;width:100%;padding:11px 14px;border:1px solid #ccc;border-radius:7px;background:#f7f9fb;cursor:pointer;font:inherit;text-align:left;');
+        btn.onclick = function () {
+          removePicker();
+          fillWithData(g.label, g.members, source);
+        };
+        list.appendChild(btn);
+      })(groups[gi]);
+    }
+    box.appendChild(list);
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.setAttribute('style', 'margin-top:14px;width:100%;padding:8px;border:none;background:transparent;color:#888;cursor:pointer;font:inherit;');
+    cancel.onclick = removePicker;
+    box.appendChild(cancel);
+    overlay.appendChild(box);
+    overlay.onclick = function (e) { if (e.target === overlay) removePicker(); };
+    document.body.appendChild(overlay);
+  }
+
+  function withGroups(groups, source) {
+    if (!groups || !groups.length) {
+      alert('Bus Wankers: no group data available - nothing has been ingested for this sale yet.');
+      return;
+    }
+    if (groups.length === 1) {
+      fillWithData(groups[0].label, groups[0].members, source);
+      return;
+    }
+    showPicker(groups, source);
+  }
+
+  if (!U || !window.fetch) {
+    withGroups(ALLM, 'offline backup data');
+    return;
+  }
+
+  var settled = false;
+  var timer = setTimeout(function () {
+    if (settled) return;
+    settled = true;
+    withGroups(ALLM, 'offline backup data – live check timed out');
+  }, 4000);
+
+  fetch(U, { cache: 'no-store', mode: 'cors', credentials: 'omit' }).then(function (r) {
+    if (!r.ok) throw new Error('bad status');
+    return r.json();
+  }).then(function (body) {
+    if (settled) return;
+    var raw = (body && body.groups) || [];
+    var live = [];
+    for (var i = 0; i < raw.length; i++) {
+      var rm = raw[i].members || [];
+      var out = [];
+      for (var j = 0; j < rm.length; j++) {
+        var mem = rm[j];
+        out.push([String(mem.registrationId || ''), String(mem.postCode || '').replace(/\\s+/g, '').toUpperCase()]);
+      }
+      live.push({ label: String(raw[i].label), members: out });
+    }
+    if (!live.length) throw new Error('no groups live');
+    settled = true;
+    clearTimeout(timer);
+    withGroups(live, 'live data');
+  }).catch(function () {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    withGroups(ALLM, 'offline backup data');
+  });
+})();
+`;
+
+// groups: the sale's full group list (parseAutofillCsv shape). Wrapped in
+// its own function so ALLM and U never leak onto the host page as globals -
+// same pattern as bookmarkletSource above, just carrying every group's
+// fallback data instead of one.
+export function saleBookmarkletSource(groups, groupsUrl = '') {
+  const ALLM = JSON.stringify(groups.map((g) => ({ label: g.label, members: membersToTuples(g.members) })));
+  const U = JSON.stringify(groupsUrl || '');
+  return `(function(){var ALLM=${ALLM},U=${U};${SALE_FILL_SOURCE}})();`;
+}
+
+export function saleBookmarkletHref(groups, groupsUrl = '') {
+  return `javascript:${encodeURIComponent(saleBookmarkletSource(groups, groupsUrl))}`;
+}
+
+// "Glasto 2027 - Fill My Group (Coach)" - one bookmark, works for anyone on
+// that sale; which group it fills is picked on click, not baked into the
+// title (there's only one of these per sale, so there's nothing to
+// disambiguate the way per-group titles need to).
+export const saleBookmarkletTitle = (saleFolderLabel, year) =>
+  `Glasto ${year} - Fill My Group (${saleFolderLabel})`;
+
+// Runs the identical routine against THIS page (the Test Form tab) - same
+// rationale as runFillOnThisPage above: same source, same live-fetch path,
+// genuine rehearsal of the picker included.
+export function runSaleFillOnThisPage(groups, groupsUrl = '') {
+  const ALLM = groups.map((g) => ({ label: g.label, members: membersToTuples(g.members) }));
+  const U = groupsUrl || '';
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('ALLM', 'U', SALE_FILL_SOURCE);
+  fn(ALLM, U);
+}
+
+// ---------------------------------------------------------------------------
 // A whole sale's bookmarks as an importable folder
 // ---------------------------------------------------------------------------
 

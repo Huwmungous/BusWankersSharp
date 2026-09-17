@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
+import SaleBookmarklet from './SaleBookmarklet';
 import { downloadStoredFile, groupsUrlFor, saveBlob } from '../api/autofillApi';
 import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
@@ -12,14 +13,20 @@ import './DocumentationSection.css';
 // The Documentation tab (the landing tab). Pick a sale, then choose HOW to
 // fill the registration form - two equal routes, both driven by the same
 // autofill file:
-//   - Bookmark: drag your group's "Fill Group X" bookmark to the bookmarks
-//     bar, try it on the Test Form, click it on the See Tickets page on the
-//     day. No extension, no account, no daily limit. Added 2026-09-16 and
-//     the recommended route. Since 2026-09-17 each bookmark also checks live
-//     for fresher data at click time (see bookmarklet.js) - so there's no
-//     "your bookmarks are stale, re-download them" concern to surface here
-//     any more; a bookmark generated today keeps working correctly even if
-//     the underlying spreadsheet changes before the sale.
+//   - Bookmark: drag ONE bookmark to the bookmarks bar (SaleBookmarklet, see
+//     ../bookmarklet.js), try it on the Test Form, click it on the See
+//     Tickets page on the day and tap your own group from the list that
+//     pops up. No extension, no account, no daily limit, no download-then-
+//     import dance - added 2026-09-16, made single-drag on 2026-09-17, and
+//     the recommended route. The old per-group bookmarks and the whole-
+//     folder download/import are still there (see the "advanced options"
+//     details) for anyone who'd rather have a bookmark already set to their
+//     own group, or is setting this up on someone else's browser. Every
+//     bookmark - whichever route it came from - checks live for fresher
+//     data at click time (see bookmarklet.js) - so there's no "your
+//     bookmarks are stale, re-download them" concern to surface here any
+//     more; a bookmark generated today keeps working correctly even if the
+//     underlying spreadsheet changes before the sale.
 //   - Extension: the original AutoFill Options / Lightning Autofill route,
 //     for people who already use it. Its free plan is capped at 10 fills a
 //     day, which the instructions warn about up front.
@@ -204,64 +211,98 @@ const DocumentationSection = ({
 
         {method === 'bookmark' && (
           <div className="doc-steps">
-            <h3>Step 1 - get the bookmarks into your browser</h3>
+            <h3>Step 1 - get the bookmark into your browser</h3>
 
-            <p>
-              <strong>Easiest: import the whole folder.</strong> The button below downloads a small file that adds a bookmarks
-              folder called <strong>{folderName}</strong> containing a bookmark for every group. Import it and you&rsquo;re done -
-              on the day, open the folder on your bookmarks bar and click your group. The bookmarks carry each group&rsquo;s
-              registration numbers and postcodes inside them, so on the day they need nothing from this site.
-            </p>
-            <p className="folder-download">
-              <button
-                type="button"
-                className="download-button folder-download-button"
-                onClick={downloadBookmarkFolder}
-                disabled={groupsStatus !== 'ready' || !groups || groups.length === 0}
-                title={groups && groups.length ? `Download ${bookmarkFolderFileName(info.folderLabel)}` : 'No groups loaded for this sale yet'}
-              >
-                Download &ldquo;{folderName}&rdquo;
-              </button>
-            </p>
-            <details className="import-howto">
-              <summary>How to import the folder (Chrome, Edge, Firefox, Safari)</summary>
-              <ul>
-                <li><strong>Chrome:</strong> menu <kbd>&#8942;</kbd> &rarr; Bookmarks and lists &rarr; Import bookmarks and settings &rarr;
-                  choose <em>Bookmarks HTML file</em> &rarr; pick the downloaded file. If you already had bookmarks, the folder appears
-                  inside an <em>Imported</em> folder on the bookmarks bar - drag <strong>{folderName}</strong> out onto the bar if you like.</li>
-                <li><strong>Edge:</strong> menu <kbd>&hellip;</kbd> &rarr; Favourites &rarr; <kbd>&hellip;</kbd> &rarr; Import favourites &rarr;
-                  <em>Favourites or bookmarks HTML file</em> &rarr; pick the file.</li>
-                <li><strong>Firefox:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> opens the Library &rarr; Import and Backup &rarr;
-                  Import Bookmarks from HTML&hellip; &rarr; pick the file. The folder lands on the Bookmarks Toolbar.</li>
-                <li><strong>Safari (Mac):</strong> File &rarr; Import From &rarr; Bookmarks HTML File&hellip; &rarr; pick the file; the folder
-                  appears under <em>Imported</em> in the sidebar - drag it to the Favourites bar.</li>
-                <li>Can&rsquo;t see a bookmarks bar at all? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
-                  (<kbd>&#8984;</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it.</li>
-              </ul>
+            {groups && groups.length > 0 ? (
+              <>
+                <p>
+                  <strong>Drag this one bookmark to your bookmarks bar</strong> - that&rsquo;s the whole install. It works
+                  for everyone on the {info.label.toLowerCase()}: on the day, click it and tap your own group from the
+                  list that pops up, then check the boxes and click Proceed.
+                </p>
+
+                <SaleBookmarklet
+                  groups={groups}
+                  year={year}
+                  saleFolderLabel={info.folderLabel}
+                  groupsUrl={groupsUrl}
+                  onTried={showTestForm}
+                />
+
+                <p className="doc-fallback">
+                  Not sure how to drag a link onto your bookmarks bar? Right-click it instead and choose &ldquo;Bookmark
+                  link&rdquo; (or &ldquo;Add to favourites&rdquo;) from the menu that appears.
+                </p>
+              </>
+            ) : (
+              <p className="bw-note">
+                {groupsStatus === 'loading' ? `Loading the ${info.label.toLowerCase()} groups…` : `Nothing has been loaded for this sale yet - the organiser needs to upload the spreadsheet on the Update Files tab.`}
+              </p>
+            )}
+
+
+
+            <details className="doc-alt">
+              <summary>Prefer a bookmark already set to your own group, or setting this up for someone else&rsquo;s browser? (advanced options)</summary>
+              <div className="doc-alt-body">
+                <p>
+                  <strong>Import the whole folder.</strong> The button below downloads a small file that adds a bookmarks
+                  folder called <strong>{folderName}</strong> containing a separate bookmark for every group. Import it
+                  and, on the day, open the folder on your bookmarks bar and click your own group&rsquo;s bookmark directly
+                  - no tap-your-group step needed, at the cost of a download-then-import first.
+                </p>
+                <p className="folder-download">
+                  <button
+                    type="button"
+                    className="download-button folder-download-button"
+                    onClick={downloadBookmarkFolder}
+                    disabled={groupsStatus !== 'ready' || !groups || groups.length === 0}
+                    title={groups && groups.length ? `Download ${bookmarkFolderFileName(info.folderLabel)}` : 'No groups loaded for this sale yet'}
+                  >
+                    Download &ldquo;{folderName}&rdquo;
+                  </button>
+                </p>
+                <details className="import-howto">
+                  <summary>How to import the folder (Chrome, Edge, Firefox, Safari)</summary>
+                  <ul>
+                    <li><strong>Chrome:</strong> menu <kbd>&#8942;</kbd> &rarr; Bookmarks and lists &rarr; Import bookmarks and settings &rarr;
+                      choose <em>Bookmarks HTML file</em> &rarr; pick the downloaded file. If you already had bookmarks, the folder appears
+                      inside an <em>Imported</em> folder on the bookmarks bar - drag <strong>{folderName}</strong> out onto the bar if you like.</li>
+                    <li><strong>Edge:</strong> menu <kbd>&hellip;</kbd> &rarr; Favourites &rarr; <kbd>&hellip;</kbd> &rarr; Import favourites &rarr;
+                      <em>Favourites or bookmarks HTML file</em> &rarr; pick the file.</li>
+                    <li><strong>Firefox:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> opens the Library &rarr; Import and Backup &rarr;
+                      Import Bookmarks from HTML&hellip; &rarr; pick the file. The folder lands on the Bookmarks Toolbar.</li>
+                    <li><strong>Safari (Mac):</strong> File &rarr; Import From &rarr; Bookmarks HTML File&hellip; &rarr; pick the file; the folder
+                      appears under <em>Imported</em> in the sidebar - drag it to the Favourites bar.</li>
+                    <li>Can&rsquo;t see a bookmarks bar at all? Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
+                      (<kbd>&#8984;</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac) to show it.</li>
+                  </ul>
+                </details>
+                <p>
+                  <strong>Or drag one of the green Glasto {year} - Fill Group&hellip; bookmarks below onto your bookmarks bar</strong>{' '}
+                  (or right-click one and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to favourites&rdquo;) for just your own group.
+                </p>
+
+                <GroupFillPanel
+                  groups={groups}
+                  status={groupsStatus}
+                  error={groupsError}
+                  year={year}
+                  saleLabel={info.label}
+                  onTried={showTestForm}
+                  nameLookup={nameLookup}
+                  groupsUrl={groupsUrl}
+                />
+              </div>
             </details>
-            <p>
-              <strong>Or drag the green Glasto {year} - Fill Group&hellip; bookmarks onto your bookmarks bar</strong>{' '}
-              (or right-click one and choose &ldquo;Bookmark link&rdquo; / &ldquo;Add to favourites&rdquo;).
-            </p>
-
-            <GroupFillPanel
-              groups={groups}
-              status={groupsStatus}
-              error={groupsError}
-              year={year}
-              saleLabel={info.label}
-              onTried={showTestForm}
-              nameLookup={nameLookup}
-              groupsUrl={groupsUrl}
-            />
 
             <h3>Step 2 - try it out</h3>
             <p>
-              Click <strong>Try it on the Test Form</strong> next to your group, or go to the <a href="#test-form">Test Form tab</a> and
+              Click <strong>Try it on the Test Form</strong> next to the bookmark above, or go to the <a href="#test-form">Test Form tab</a> and
               click your new bookmark there. For the closest possible rehearsal, open the{' '}
               <a href={`${process.env.PUBLIC_URL}/test_page.html`} target="_blank" rel="noopener noreferrer">saved copy of the real See Tickets page</a>{' '}
-              and click your bookmark on that. Either way your group&rsquo;s details should appear in the boxes and a green bar
-              should confirm how many people were filled in; click <strong>Proceed</strong> to see exactly what the form holds.
+              and click your bookmark on that. Either way, tap your group when asked, and your details should appear in the boxes with a green bar
+              confirming how many people were filled in; click <strong>Proceed</strong> to see exactly what the form holds.
               Do this well before the sale, not on the morning.
             </p>
 
@@ -270,17 +311,18 @@ const DocumentationSection = ({
               <li>Be on <code>glastonbury.seetickets.com</code> <em>before</em> the sale opens and wait in the queue. Don&rsquo;t refresh,
                 and don&rsquo;t open extra tabs or devices - the festival says that can get you blocked.</li>
               <li>When the registration page appears (the one asking for &ldquo;Registration Number&rdquo; and &ldquo;Postcode&rdquo; for each
-                person), open the <strong>{folderName}</strong> folder on your bookmarks bar and click your{' '}
-                <strong>Glasto {year} - Fill Group &hellip;</strong> bookmark once.</li>
+                person), click your <strong>Glasto {year} - Fill My Group ({info.folderLabel})</strong> bookmark once, then tap your
+                own group in the list that pops up.</li>
               <li>Check the boxes look right - the green bar tells you how many people were filled - then click <strong>Proceed</strong>.
                 You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
             </ol>
             <p className="doc-fallback">
-              No bookmarks bar (on a phone, say)? Open <strong>Show details / copy &amp; paste</strong> under your group: every
-              registration number and postcode has a Copy button, so you can paste rather than type.
+              No bookmarks bar (on a phone, say)? Open <strong>Show details / copy &amp; paste</strong> under your group in the advanced
+              options above: every registration number and postcode has a Copy button, so you can paste rather than type.
             </p>
           </div>
         )}
+
 
         {method === 'extension' && (
           <ExtensionInstructions
