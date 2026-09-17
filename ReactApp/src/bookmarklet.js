@@ -112,8 +112,10 @@ export function parseAutofillCsv(text) {
 // The fill routine (embedded in every bookmarklet)
 // ---------------------------------------------------------------------------
 
-// Runs with two variables in scope: M (array of [registrationId, postCode])
-// and L (the group label). Deliberately old-school JS (no arrow functions,
+// Runs with three variables in scope: M (array of [registrationId,
+// postCode]), L (the group label), and V (the data version stamp, or '' -
+// see versionStamp below - shown in the confirmation banner only, never
+// used to decide whether to fill). Deliberately old-school JS (no arrow functions,
 // template literals, let/const) so it runs on any browser someone might be
 // using on the day. Keep it self-contained - it cannot reference anything
 // from this module.
@@ -167,7 +169,7 @@ export const FILL_SOURCE = `
     if (m[0] && slots[s][0]) filled++;
   }
   var missing = M.length > slots.length ? M.slice(slots.length) : [];
-  var msg = 'Bus Wankers - ' + L + ': filled ' + filled + ' of ' + M.length + ' people.';
+  var msg = 'Bus Wankers - ' + L + (V ? ' (data: ' + V + ')' : '') + ': filled ' + filled + ' of ' + M.length + ' people.';
   if (missing.length) {
     msg += ' This page only has ' + slots.length + ' slots, so NOT entered: ' + missing.map(function (x) { return x[0]; }).join(', ') + '.';
   }
@@ -193,32 +195,72 @@ const normalisePostcode = (s) => String(s || '').replace(/\s+/g, '').toUpperCase
 const membersToTuples = (members) =>
   members.map((m) => [String(m.registrationId || '').trim(), normalisePostcode(m.postCode)]);
 
+// ---------------------------------------------------------------------------
+// Data versioning - making "is this bookmark stale?" answerable (2026-09-17)
+// ---------------------------------------------------------------------------
+//
+// A bookmarklet's data (M above) is baked in at generation time and then
+// lives on, unchanged, in the user's real browser bookmarks - it has no way
+// to know if the autofill file it came from has since been re-ingested with
+// corrected postcodes or a changed group. Rather than have the bookmarklet
+// phone home to check (which would reintroduce the network dependency on
+// sale morning that bookmarklets exist to avoid - see the file banner
+// above), the fix is to make the data's own version visible everywhere a
+// bookmark is generated or displayed, using the SAME timestamp already
+// returned by GET /files (see fetchStoredFiles in api/autofillApi.js and
+// AutofillStore.StoredAutofillFile on the backend) and already shown as
+// "Groups last updated ..." in DocumentationSection/GroupsSection.
+//
+// versionStamp() turns that ISO timestamp into a short, human-readable,
+// filename-safe token (no colon, so it's safe in a downloaded filename on
+// every OS): "17 Sep 14.02". It's derived from the DATA's lastModified, not
+// wall-clock "now", so re-downloading when nothing has actually changed
+// reproduces the exact same stamp instead of minting a new-looking "stale"
+// duplicate folder every time.
+export function versionStamp(lastModified) {
+  const d = new Date(lastModified);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+  return `${day} ${time}`;
+}
+
 // The complete bookmarklet source for one group, as plain JavaScript. Wrapped
-// in its own function so M and L never leak onto the host page as globals.
-export function bookmarkletSource(group) {
+// in its own function so M, L and V never leak onto the host page as
+// globals. version (see versionStamp) is optional so existing callers keep
+// working; when given, it travels inside the bookmark itself so the fill
+// confirmation banner can show which data it was generated from.
+export function bookmarkletSource(group, version = '') {
   const M = JSON.stringify(membersToTuples(group.members));
   const L = JSON.stringify(`Group ${group.label}`);
-  return `(function(){var M=${M},L=${L};${FILL_SOURCE}})();`;
+  const V = JSON.stringify(version || '');
+  return `(function(){var M=${M},L=${L},V=${V};${FILL_SOURCE}})();`;
 }
 
 // The javascript: URL to put in the bookmark. Percent-encoded so nothing in
 // the source (quotes, #, spaces) can break the URL; browsers decode
 // javascript: URLs before running them.
-export function bookmarkletHref(group) {
-  return `javascript:${encodeURIComponent(bookmarkletSource(group))}`;
+export function bookmarkletHref(group, version = '') {
+  return `javascript:${encodeURIComponent(bookmarkletSource(group, version))}`;
 }
 
-// A sensible bookmark name: "Glasto 2027 - Fill Group A".
-export const bookmarkletTitle = (group, year) => `Glasto ${year} - Fill Group ${group.label}`;
+// A sensible bookmark name: "Glasto 2027 - Fill Group A", or
+// "Glasto 2027 - Fill Group A (17 Sep 14.02)" once a data version is known -
+// so the version travels with the bookmark itself, visible on the bookmarks
+// bar, not just on the site.
+export const bookmarkletTitle = (group, year, version = '') =>
+  version ? `Glasto ${year} - Fill Group ${group.label} (${version})` : `Glasto ${year} - Fill Group ${group.label}`;
 
 // Runs the identical fill routine against THIS page (the Test Form tab), so
-// "Try it on the Test Form" exercises exactly what the bookmark will do.
-export function runFillOnThisPage(group) {
+// "Try it on the Test Form" exercises exactly what the bookmark will do,
+// version banner included.
+export function runFillOnThisPage(group, version = '') {
   const M = membersToTuples(group.members);
   const L = `Group ${group.label}`;
+  const V = version || '';
   // eslint-disable-next-line no-new-func
-  const fn = new Function('M', 'L', FILL_SOURCE);
-  fn(M, L);
+  const fn = new Function('M', 'L', 'V', FILL_SOURCE);
+  fn(M, L, V);
 }
 
 // ---------------------------------------------------------------------------
@@ -242,9 +284,12 @@ const escapeHtml = (s) => String(s)
 //
 // The bookmarklet hrefs are percent-encoded (see bookmarkletHref), so they
 // contain no quotes or ampersands and are safe inside the HREF attribute.
-export function bookmarkFolderHtml(groups, folderName, year) {
+// version (see versionStamp) flows through to every bookmarklet's own href
+// and title, so each bookmark in the folder visibly carries the same data
+// version as the folder itself.
+export function bookmarkFolderHtml(groups, folderName, year, version = '') {
   const items = groups
-    .map((g) => `            <DT><A HREF="${bookmarkletHref(g)}">${escapeHtml(bookmarkletTitle(g, year))}</A>`)
+    .map((g) => `            <DT><A HREF="${bookmarkletHref(g, version)}">${escapeHtml(bookmarkletTitle(g, year, version))}</A>`)
     .join('\n');
   const stamp = Math.floor(Date.now() / 1000);
   return `<!DOCTYPE NETSCAPE-Bookmark-file-1>
@@ -266,8 +311,17 @@ ${items}
 `;
 }
 
-// "Glasto Coach Bookmarks" - the folder name Hugh asked for, per sale.
-export const bookmarkFolderName = (saleFolderLabel) => `Glasto ${saleFolderLabel} Bookmarks`;
+// "Glasto Coach Bookmarks" - the folder name Hugh asked for, per sale - or
+// "Glasto Coach Bookmarks (17 Sep 14.02)" once a data version is given. The
+// stamped version is what makes re-downloading after the data changes
+// produce a visibly different, non-colliding folder name instead of a
+// second folder with the exact same name as a now-stale one, so the user
+// can tell at a glance which is current and safely delete the other.
+export const bookmarkFolderName = (saleFolderLabel, version = '') =>
+  version ? `Glasto ${saleFolderLabel} Bookmarks (${version})` : `Glasto ${saleFolderLabel} Bookmarks`;
 
-// A filename for the download: "Glasto Coach Bookmarks.html".
-export const bookmarkFolderFileName = (saleFolderLabel) => `${bookmarkFolderName(saleFolderLabel)}.html`;
+// A filename for the download: "Glasto Coach Bookmarks.html", or
+// "Glasto Coach Bookmarks (17 Sep 14.02).html". versionStamp() is already
+// colon-free, so this is a safe filename on every OS.
+export const bookmarkFolderFileName = (saleFolderLabel, version = '') =>
+  `${bookmarkFolderName(saleFolderLabel, version)}.html`;

@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
 import { downloadStoredFile, saveBlob } from '../api/autofillApi';
-import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '../bookmarklet';
+import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName, versionStamp } from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
@@ -39,6 +39,26 @@ const readSavedMethod = () => {
   }
 };
 
+// Remembers which data version (raw stored.lastModified ISO string, NOT the
+// display stamp) was baked into the bookmarks folder the user last actually
+// downloaded, per sale filename - so we can tell them when it's gone stale.
+// Per-browser convenience like METHOD_KEY above: if it can't be read or
+// written, we just can't show the staleness banner, which is no worse than
+// today's behaviour.
+const VERSION_KEY_PREFIX = 'bw-bookmarks-version-';
+
+const readSavedVersion = (filename) => {
+  try {
+    return window.localStorage.getItem(VERSION_KEY_PREFIX + filename) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeSavedVersion = (filename, value) => {
+  try { window.localStorage.setItem(VERSION_KEY_PREFIX + filename, value); } catch { /* per-browser convenience only */ }
+};
+
 // saleType/onSaleTypeChange: lifted up to BusWankersPage (rather than local
 // state here) so the Groups tab's fallback view defaults to whatever sale is
 // currently selected here, and either tab changing it moves both.
@@ -71,6 +91,21 @@ const DocumentationSection = ({
   } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
   const remoteImportUrl = `https://longmanrd.net/buswankers/${info.filename}`;
 
+  // The current data version for this sale (see versionStamp in
+  // bookmarklet.js) - '' until the groups have actually loaded. downloadedVersion
+  // is which version the user last actually downloaded a bookmarks folder
+  // for, remembered per sale so switching sales (or coming back another day)
+  // compares against the right one. Compared as raw ISO strings (currentVersionRaw
+  // vs downloadedVersion) rather than the formatted stamps, so there's no
+  // risk of two different timestamps formatting to the same-looking text.
+  const currentVersionRaw = stored ? stored.lastModified : '';
+  const version = stored ? versionStamp(stored.lastModified) : '';
+  const [downloadedVersion, setDownloadedVersion] = useState(() => readSavedVersion(info.filename));
+  useEffect(() => {
+    setDownloadedVersion(readSavedVersion(info.filename));
+  }, [info.filename]);
+  const bookmarksAreStale = Boolean(downloadedVersion) && Boolean(currentVersionRaw) && downloadedVersion !== currentVersionRaw;
+
   const handleDownload = async () => {
     if (isEmpty) return;
     setDownloadStatus('working');
@@ -85,12 +120,21 @@ const DocumentationSection = ({
   };
 
   // Every group's bookmark for this sale in one importable bookmarks file,
-  // as a folder named "Glasto <Sale> Bookmarks" (see bookmarkFolderHtml).
-  const folderName = bookmarkFolderName(info.folderLabel);
+  // as a folder named "Glasto <Sale> Bookmarks (<data version>)" (see
+  // bookmarkFolderHtml/bookmarkFolderName) - the version travels with the
+  // folder name/filename itself, so a re-download after the data changes
+  // produces a visibly different folder rather than a same-named duplicate.
+  const folderName = bookmarkFolderName(info.folderLabel, version);
   const downloadBookmarkFolder = () => {
     if (!groups || groups.length === 0) return;
-    const html = bookmarkFolderHtml(groups, folderName, year);
-    saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel));
+    const html = bookmarkFolderHtml(groups, folderName, year, version);
+    saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel, version));
+    // Remember exactly which data version this download carried, so the
+    // staleness banner only reappears once the data genuinely changes again.
+    if (stored) {
+      writeSavedVersion(info.filename, stored.lastModified);
+      setDownloadedVersion(stored.lastModified);
+    }
   };
 
   const chooseMethod = (m) => {
@@ -188,6 +232,14 @@ const DocumentationSection = ({
 
         {method === 'bookmark' && (
           <div className="doc-steps">
+            {bookmarksAreStale && (
+              <p className="doc-warning" role="alert">
+                <strong>Your imported bookmarks are out of date.</strong> The {info.label.toLowerCase()} group data has changed
+                since you last downloaded them (yours: {versionStamp(downloadedVersion)}, current: {version}). Download
+                the folder again below and re-import it - your browser will keep both, so delete the old &ldquo;
+                {bookmarkFolderName(info.folderLabel, versionStamp(downloadedVersion))}&rdquo; folder once you have.
+              </p>
+            )}
             <h3>Step 1 - get the bookmarks into your browser</h3>
             <p>
               <strong>Easiest: import the whole folder.</strong> The button below downloads a small file that adds a bookmarks
@@ -235,6 +287,7 @@ const DocumentationSection = ({
               saleLabel={info.label}
               onTried={showTestForm}
               nameLookup={nameLookup}
+              version={version}
             />
 
             <h3>Step 2 - try it out</h3>
