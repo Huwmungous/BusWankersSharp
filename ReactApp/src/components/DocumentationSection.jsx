@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
 import { downloadStoredFile, saveBlob } from '../api/autofillApi';
@@ -6,6 +6,7 @@ import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
+import { buildNameLookup } from '../runningOrder';
 import './DocumentationSection.css';
 
 // The Documentation tab (the landing tab). Pick a sale, then choose HOW to
@@ -41,6 +42,11 @@ const readSavedMethod = () => {
 // saleType/onSaleTypeChange: lifted up to BusWankersPage (rather than local
 // state here) so the Groups tab's fallback view defaults to whatever sale is
 // currently selected here, and either tab changing it moves both.
+//
+// runningOrder: the ingested roster (see BusWankersPage/fetchRunningOrder) -
+// used only to look up each member's name by registration number for the
+// group tables' Name column (see runningOrder.js); the autofill files
+// themselves never carry names.
 const DocumentationSection = ({
   year = DEFAULT_YEAR,
   storedFiles = new Map(),
@@ -48,10 +54,12 @@ const DocumentationSection = ({
   storeError = '',
   saleType = 'Coach',
   onSaleTypeChange = () => {},
+  runningOrder = null,
 }) => {
   const [method, setMethod] = useState(readSavedMethod); // bookmark | extension
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
+  const nameLookup = useMemo(() => buildNameLookup(runningOrder), [runningOrder]);
 
   const info = SALE_INFO[saleType];
   const {
@@ -226,6 +234,7 @@ const DocumentationSection = ({
               year={year}
               saleLabel={info.label}
               onTried={showTestForm}
+              nameLookup={nameLookup}
             />
 
             <h3>Step 2 - try it out</h3>

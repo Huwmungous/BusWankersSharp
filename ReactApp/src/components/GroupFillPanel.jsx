@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bookmarkletHref, bookmarkletSource, bookmarkletTitle, runFillOnThisPage } from '../bookmarklet';
+import { nameForRegistration } from '../runningOrder';
 import './GroupFillPanel.css';
 
 // A javascript: href has to be set outside React's render path: React 18
@@ -64,7 +65,12 @@ export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => 
 // One group's card: the bookmarklet to drag, a "try it" button that runs
 // the same fill against the Test Form tab, and (collapsed) the copy/paste
 // fallback and the raw bookmarklet code for anyone on a phone.
-const GroupCard = ({ group, year, onTried }) => {
+//
+// nameLookup: registration number -> "First Last" (see runningOrder.js),
+// built from the ingested roster - purely a display convenience for the
+// copy/paste table, so a missing entry (roster not ingested, or a genuine
+// mismatch) just shows as blank rather than an error.
+const GroupCard = ({ group, year, onTried, nameLookup }) => {
   const [showDetails, setShowDetails] = useState(false);
   const count = group.members.length;
 
@@ -95,16 +101,17 @@ const GroupCard = ({ group, year, onTried }) => {
         <div className="bw-group-details">
           <p className="bw-note">
             If you can&rsquo;t use a bookmark (on a phone, say), copy each value from here into the matching box.
-            Slot 0 is &ldquo;Your Details&rdquo;; #1 onwards are the additional registrations.
+            Slot 0 is &ldquo;Lead Booker&rdquo;; #1 onwards are the additional registrations.
           </p>
           <table className="bw-members">
             <thead>
-              <tr><th>Slot</th><th>Registration Number</th><th>Postcode</th></tr>
+              <tr><th>Slot</th><th>Name</th><th>Registration Number</th><th>Postcode</th></tr>
             </thead>
             <tbody>
               {group.members.map((m, i) => (
                 <tr key={`${m.registrationId}-${i}`}>
-                  <td>{i === 0 ? 'Your Details' : `#${i}`}</td>
+                  <td>{i === 0 ? 'Lead Booker' : `#${i}`}</td>
+                  <td>{nameForRegistration(nameLookup, m.registrationId) || '—'}</td>
                   <td><code>{m.registrationId}</code> <CopyButton text={m.registrationId} /></td>
                   <td><code>{m.postCode}</code> <CopyButton text={m.postCode} /></td>
                 </tr>
@@ -122,8 +129,10 @@ const GroupCard = ({ group, year, onTried }) => {
 };
 
 // groups: from fetchAutofillGroups (null = file not in store), status:
-// loading | ready | error. saleLabel is for the wording only.
-const GroupFillPanel = ({ groups, status, error, year, saleLabel, onTried }) => {
+// loading | ready | error. saleLabel is for the wording only. nameLookup:
+// see GroupCard - defaults to an empty Map so callers that don't have a
+// roster yet (or don't care) can simply omit it.
+const GroupFillPanel = ({ groups, status, error, year, saleLabel, onTried, nameLookup = new Map() }) => {
   if (status === 'loading') {
     return <p className="bw-note">Loading the {saleLabel.toLowerCase()} groups…</p>;
   }
@@ -145,7 +154,7 @@ const GroupFillPanel = ({ groups, status, error, year, saleLabel, onTried }) => 
   return (
     <ul className="bw-groups">
       {groups.map((g) => (
-        <GroupCard key={g.code} group={g} year={year} onTried={onTried} />
+        <GroupCard key={g.code} group={g} year={year} onTried={onTried} nameLookup={nameLookup} />
       ))}
     </ul>
   );
