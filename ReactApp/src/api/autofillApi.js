@@ -135,6 +135,20 @@ export function downloadUrlFor(filename) {
   return `${API_BASE}/files/${encodeURIComponent(filename)}`;
 }
 
+// Absolute URL for a sale's live, structured group data (see
+// UploadServiceController.DownloadGroups) - the one URL in this file that has
+// to be fully-qualified rather than relative. Every other call here runs from
+// this app's own page, so a path relative to it is enough; this one is baked
+// into a bookmarklet (see bookmarkletSource in ../bookmarklet.js) and fetched
+// from wherever that bookmarklet is clicked - the actual registration page,
+// on a domain this app has no way to know in advance. Built from
+// window.location.origin (wherever this app itself is being served from -
+// local dev, SIT, UAT, PRD) rather than a hardcoded domain, for the same
+// reason.
+export function groupsUrlFor(filename) {
+  return `${window.location.origin}${API_BASE}/files/${encodeURIComponent(filename)}/groups`;
+}
+
 // Fetch a stored file and hand it to the browser as a download, rather than
 // relying on <a download> (which is ignored for cross-path navigations in
 // some browsers and gives no error feedback on a 404).

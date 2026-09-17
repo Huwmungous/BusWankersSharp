@@ -141,6 +141,53 @@ public sealed class AutofillStore
         return true;
     }
 
+    /// <summary>
+    /// The suffix for a sale's structured-groups sidecar, alongside its autofill
+    /// CSV - "coach_autofill.csv" gets "coach_autofill.groups.json". This is what
+    /// the bookmarklet itself fetches live, cross-origin, at click time (see
+    /// UploadServiceController.DownloadGroups and bookmarkletSource/FILL_SOURCE
+    /// in ReactApp/src/bookmarklet.js): the same RegistrationGroup data
+    /// GenerateAutofillTextFromGroups turns into CSV, written straight to JSON
+    /// instead, so there is no CSV-parsing logic to duplicate in the bookmarklet's
+    /// own (deliberately old-school) JavaScript.
+    /// </summary>
+    public const string GroupsFileSuffix = ".groups.json";
+
+    public static string GroupsFileNameFor(string autofillFileName) =>
+        Path.GetFileNameWithoutExtension(autofillFileName) + GroupsFileSuffix;
+
+    /// <summary>Full path of a sale's groups sidecar, or null if it isn't there (or the autofill filename isn't safe).</summary>
+    public string? PathOfGroups(string? autofillFileName)
+    {
+        if (!IsSafeFileName(autofillFileName))
+            return null;
+
+        var path = Path.Combine(_directory, GroupsFileNameFor(autofillFileName!));
+        return File.Exists(path) ? path : null;
+    }
+
+    public Task SaveGroupsAsync(string autofillFileName, byte[] json, CancellationToken ct = default)
+    {
+        if (!IsSafeFileName(autofillFileName))
+            throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+
+        return WriteAtomicAsync(GroupsFileNameFor(autofillFileName), json, ct);
+    }
+
+    /// <summary>Removes a sale's groups sidecar (an emptied sale sheet clears it, same as its CSV). True if there was one.</summary>
+    public bool DeleteGroups(string autofillFileName)
+    {
+        if (!IsSafeFileName(autofillFileName))
+            throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+
+        var path = Path.Combine(_directory, GroupsFileNameFor(autofillFileName));
+        if (!File.Exists(path))
+            return false;
+
+        File.Delete(path);
+        return true;
+    }
+
     private async Task<string> WriteAtomicAsync(string fileName, byte[] content, CancellationToken ct)
     {
         System.IO.Directory.CreateDirectory(_directory);

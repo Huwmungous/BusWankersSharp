@@ -198,6 +198,14 @@ public class UploadServiceController : ControllerBase
                 var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup);
                 var stored = await _store.SaveAsync(filename, Encoding.UTF8.GetBytes(text), ct);
 
+                // Same groups, written straight to JSON alongside the CSV - see
+                // AutofillStore.SaveGroupsAsync and DownloadGroups below. This is
+                // what the bookmarklet fetches live at click time, so it never has
+                // to parse CSV (or duplicate BusWankers.GenerateAutofillTextFromGroups'
+                // slot-padding logic) in its own JavaScript.
+                var groupsJson = JsonSerializer.SerializeToUtf8Bytes(ToGroupsDocument(groups), JsonOptions);
+                await _store.SaveGroupsAsync(filename, groupsJson, ct);
+
                 _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
                     sheetName, stored.Filename, groups.Count, stored.Size, file.FileName);
 
@@ -215,6 +223,7 @@ public class UploadServiceController : ControllerBase
                 try
                 {
                     cleared = _store.Delete(filename);
+                    _store.DeleteGroups(filename);
                 }
                 catch (Exception delEx)
                 {
@@ -311,7 +320,7 @@ public class UploadServiceController : ControllerBase
                 DateTimeOffset.UtcNow,
                 roster.Entries.Select(e => new RunningOrderEntry(e.RegistrationId, e.FirstName, e.LastName, e.DisplayName)).ToList());
 
-            var json = JsonSerializer.SerializeToUtf8Bytes(document, RunningOrderJson);
+            var json = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
             await _store.SaveRunningOrderAsync(json, ct);
 
             _log.LogInformation("Ingested roster sheet '{Sheet}' -> {File} (year {Year}, {People} people) from {Upload}",
@@ -378,6 +387,36 @@ public class UploadServiceController : ControllerBase
 
         Response.Headers.CacheControl = "no-cache";
         return PhysicalFile(path, "text/csv", filename);
+    }
+
+    /// <summary>
+    /// The same sale's groups, structured, as JSON - see AutofillStore.SaveGroupsAsync
+    /// and ToGroupsDocument. Public and no-cache for the same reason as Download
+    /// above, but this route exists for a different caller: it's what the
+    /// bookmarklet ITSELF fetches, live, at the moment someone clicks it -
+    /// from whatever page happens to be open then (the actual registration
+    /// page, on a domain that isn't known until sale day - see
+    /// bookmarkletSource/FILL_SOURCE in ReactApp/src/bookmarklet.js), not from
+    /// this app. That works cross-origin with no changes here: the service's
+    /// CORS policy already allows any origin (see the comment in Program.cs).
+    /// A bookmarklet whose live fetch fails for any reason (offline, blocked
+    /// by the registration page's own CSP, this route 404ing because nothing's
+    /// been re-ingested since the bookmark was made) falls back to the data
+    /// baked into it when it was generated, so this being unreachable is a
+    /// degraded experience, never a broken one.
+    /// </summary>
+    [HttpGet("files/{filename}/groups")]
+    public IActionResult DownloadGroups(string filename)
+    {
+        if (!AutofillStore.IsSafeFileName(filename))
+            return BadRequest(new { error = "Not a valid autofill filename." });
+
+        var path = _store.PathOfGroups(filename);
+        if (path == null)
+            return NotFound(new { error = $"No group data for '{filename}' has been ingested yet." });
+
+        Response.Headers.CacheControl = "no-cache";
+        return PhysicalFile(path, "application/json");
     }
 
     private int MaxInAGroupFor(string sheetName) =>
@@ -463,7 +502,34 @@ public class UploadServiceController : ControllerBase
 
     public sealed record RunningOrderEntry(string RegNumber, string FirstName, string LastName, string Name);
 
-    private static readonly JsonSerializerOptions RunningOrderJson = new(JsonSerializerDefaults.Web)
+    /// <summary>
+    /// What a sale's groups sidecar holds - also the body of
+    /// GET /files/{filename}/groups. Shape deliberately mirrors what the
+    /// frontend's own CSV parser (parseAutofillCsv in bookmarklet.js) already
+    /// produces from the same data (code/label/name/members with
+    /// registrationId/postCode), so the bookmarklet's live-fetch path and the
+    /// page's CSV-based path end up with identically-shaped group objects,
+    /// even though the bytes on the wire are completely different.
+    /// </summary>
+    public sealed record GroupsDocument(List<GroupData> Groups);
+
+    public sealed record GroupData(string Code, string Label, string Name, List<MemberData> Members);
+
+    public sealed record MemberData(string RegistrationId, string PostCode);
+
+    private static GroupsDocument ToGroupsDocument(List<RegistrationGroup> groups)
+    {
+        var data = new List<GroupData>(groups.Count);
+        for (int i = 0; i < groups.Count; i++)
+        {
+            var g = groups[i];
+            var members = g.Members.Select(m => new MemberData(m.RegistrationId, m.PostCode)).ToList();
+            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"Group-{g.GroupLabel}", members));
+        }
+        return new GroupsDocument(data);
+    }
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
     };
