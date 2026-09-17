@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import DocumentationSection from './DocumentationSection';
+import GroupsSection from './GroupsSection';
 import IngestBar from './IngestBar';
 import LaunchSection from './LaunchSection';
 import RunningOrderSection from './RunningOrderSection';
@@ -9,11 +10,13 @@ import { DEFAULT_YEAR } from '../festival';
 import { useActiveTab } from '../tabs';
 import './BusWankersPage.css';
 
-// The site is one page with five tabs (see src/tabs.js): Update Files (upload
+// The site is one page with six tabs (see src/tabs.js): Update Files (upload
 // a spreadsheet to refresh the live autofill files), Documentation (the
-// landing tab - pick and download your autofill file), Running Order (who's
-// on this year's roster), Test Form (a mockup of the registration form) and
-// Launcher (arm this browser to open the ticket page at the sale time).
+// landing tab - pick and download your autofill file), Groups (a standalone
+// copy/paste fallback for every group, for when the bookmark, bookmarklet,
+// extension or Launcher jump doesn't work), Running Order (who's on this
+// year's roster), Test Form (a mockup of the registration form) and Launcher
+// (arm this browser to open the ticket page at the sale time).
 //
 // Every tab body stays mounted and is simply hidden when not selected, so
 // switching tabs never throws away what's in them - the upload bar's result
@@ -83,6 +86,9 @@ const BusWankersPage = () => {
       </div>
       <div {...tabProps('documentation')}>
         <DocumentationSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
+      </div>
+      <div {...tabProps('groups')}>
+        <GroupsSection year={year} storedFiles={storedFiles} storeStatus={storeStatus} storeError={storeError} />
       </div>
       <div {...tabProps('running-order')}>
         <RunningOrderSection

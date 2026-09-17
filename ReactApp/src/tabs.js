@@ -7,6 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 export const TABS = [
   { id: 'update-files', label: 'Update Files' },
   { id: 'documentation', label: 'Documentation' },
+  // Standalone copy/paste fallback for every group - see GroupsSection - for
+  // when the bookmark, bookmarklet, extension or Launcher jump doesn't work.
+  { id: 'groups', label: 'Groups' },
   { id: 'running-order', label: 'Running Order' },
   { id: 'test-form', label: 'Test Form' },
   // id stays 'launch': it's the hash (#launch) that launch links point at.

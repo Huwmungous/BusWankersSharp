@@ -1,85 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
-import { downloadStoredFile, fetchAutofillGroups, saveBlob } from '../api/autofillApi';
+import { downloadStoredFile, saveBlob } from '../api/autofillApi';
 import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
+import { SALE_INFO, formatWhen } from '../saleInfo';
+import { useAutofillGroups } from '../useAutofillGroups';
 import './DocumentationSection.css';
-
-// One entry per autofill file the dropdown can offer. Keyed by the same sale
-// name the spreadsheet-upload backend uses for its sheets/GroupSizes (see
-// UploaderService/appsettings.json), and each `filename` MUST match what
-// UploadServiceController.DownloadNameFor produces for that sheet - that's how
-// the dropdown decides whether a sale is populated or "(empty)". Coach and
-// General keep the specific dates/cost text that's actually known; the others
-// get generic text until Hugh gives us real detail for them. `folderLabel`
-// names the importable bookmark folder: "Glasto <folderLabel> Bookmarks".
-//
-// `heading` is a function of the festival year (which comes from the
-// ingested roster sheet, see BusWankersPage) so the page never hardcodes it;
-// the dates and costs are deliberately NOT - they're specific and need
-// editing by hand each year.
-const SALE_INFO = {
-  Coach: {
-    label: 'Coach Tickets',
-    shortLabel: 'Coach + Ticket Package Sale',
-    folderLabel: 'Coach',
-    heading: (year) => `${year} Glastonbury Coach Ticket Sale`,
-    filename: 'coach_autofill.csv',
-    dates: [
-      'Registration deadline: 5:00pm BST, Friday 25th September 2026',
-      'Coach + ticket package sale: 6:00pm BST, Thursday 1st October 2026',
-    ],
-    cost: null,
-  },
-  General: {
-    label: 'General Sale',
-    shortLabel: 'General Sale',
-    folderLabel: 'General',
-    heading: (year) => `${year} Glastonbury General Sale`,
-    filename: 'general_autofill.csv',
-    dates: [
-      'Registration deadline: 5:00pm BST, Friday 25th September 2026',
-      'General sale (standard tickets): 9:00am BST, Sunday 4th October 2026',
-    ],
-    cost: [
-      "General Admission tickets (valid Wed 23rd – Sun 27th June 2027): £408 (including a £5 booking fee per ticket) plus postage and packing",
-      "Deposit is £100 per person — for a 6-person group that's £600 you need in your account on ticket buying day",
-    ],
-  },
-  'Resale - Coach': {
-    label: 'Resale - Coach',
-    shortLabel: 'Coach Resale',
-    folderLabel: 'Coach Resale',
-    heading: (year) => `${year} Glastonbury Coach Resale`,
-    filename: 'coach_resale_autofill.csv',
-    dates: ['Dates to be confirmed — check with your group organiser before use.'],
-    cost: null,
-  },
-  'Resale - General': {
-    label: 'Resale - General',
-    shortLabel: 'General Resale',
-    folderLabel: 'General Resale',
-    heading: (year) => `${year} Glastonbury General Resale`,
-    filename: 'general_resale_autofill.csv',
-    dates: ['Dates to be confirmed — check with your group organiser before use.'],
-    cost: null,
-  },
-  Demo: {
-    label: 'Demo',
-    shortLabel: 'Demo Sale',
-    folderLabel: 'Demo',
-    heading: (year) => `${year} Glastonbury Demo Sale`,
-    filename: 'demo_autofill.csv',
-    dates: ['For testing/demonstration only — not a real sale.'],
-    cost: null,
-  },
-};
-
-const formatWhen = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
-};
 
 // The Documentation tab (the landing tab). Pick a sale, then choose HOW to
 // fill the registration form - two equal routes, both driven by the same
@@ -116,47 +43,16 @@ const DocumentationSection = ({ year = DEFAULT_YEAR, storedFiles = new Map(), st
   const [method, setMethod] = useState(readSavedMethod); // bookmark | extension
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
-  const [groups, setGroups] = useState(null);
-  const [groupsStatus, setGroupsStatus] = useState('loading'); // loading | ready | error
-  const [groupsError, setGroupsError] = useState('');
 
   const info = SALE_INFO[saleType];
-  const stored = storedFiles.get(info.filename);
-  const isEmpty = !stored || stored.size === 0;
+  const {
+    groups,
+    status: groupsStatus,
+    error: groupsError,
+    isEmpty,
+    stored,
+  } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
   const remoteImportUrl = `https://longmanrd.net/buswankers/${info.filename}`;
-
-  // (Re)load the groups whenever the chosen sale changes or the store is
-  // refreshed (an ingest just happened). A sale with no file is "ready, no
-  // groups" rather than an error.
-  useEffect(() => {
-    let cancelled = false;
-    if (storeStatus !== 'ready') {
-      setGroupsStatus(storeStatus === 'error' ? 'error' : 'loading');
-      setGroupsError(storeStatus === 'error' ? storeError : '');
-      return undefined;
-    }
-    if (isEmpty) {
-      setGroups(null);
-      setGroupsStatus('ready');
-      setGroupsError('');
-      return undefined;
-    }
-    setGroupsStatus('loading');
-    fetchAutofillGroups(info.filename).then(
-      (g) => {
-        if (cancelled) return;
-        setGroups(g);
-        setGroupsStatus('ready');
-        setGroupsError('');
-      },
-      (err) => {
-        if (cancelled) return;
-        setGroupsStatus('error');
-        setGroupsError(err.message || 'Could not reach the upload service.');
-      },
-    );
-    return () => { cancelled = true; };
-  }, [info.filename, isEmpty, storeStatus, storeError, stored]);
 
   const handleDownload = async () => {
     if (isEmpty) return;
