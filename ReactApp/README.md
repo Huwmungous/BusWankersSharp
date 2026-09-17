@@ -29,13 +29,18 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
    browser in localStorage, default Bookmark):
-   - **Bookmark** - a *Download "Glasto <Sale> Bookmarks"* button produces a
-     standard bookmarks HTML file (`bookmarkFolderHtml`) that imports as one
-     folder holding a bookmark per group, with per-browser import steps; below
-     it, each group also has a draggable **Glasto nnnn - Fill Group X**
-     bookmarklet, a *Try it on the Test Form* button, and (collapsed) a
-     copy/paste table of the group's reg numbers and postcodes
-     (`GroupFillPanel`).
+   - **Bookmark** - the primary route is a single draggable **Glasto nnnn -
+     Fill My Group (Sale)** bookmarklet (`SaleBookmarklet`) that covers every
+     group: drag it once, and on click it shows a tap-to-choose picker for
+     the person's own group before filling (see "One bookmark for the WHOLE
+     sale" below). Behind an "advanced options" `<details>`, the older routes
+     are still there for anyone who wants them: a *Download "Glasto \<Sale\>
+     Bookmarks"* button producing a standard bookmarks HTML file
+     (`bookmarkFolderHtml`) that imports as one folder holding a bookmark per
+     group, with per-browser import steps; and, below that, each group's own
+     draggable **Glasto nnnn - Fill Group X** bookmarklet, a *Try it on the
+     Test Form* button, and (collapsed) a copy/paste table of the group's reg
+     numbers and postcodes (`GroupFillPanel`).
    - **AutoFill Options extension** (`ExtensionInstructions`) - the original
      route: Download button, Remote Import URL, screenshots, video, with the free
      plan's 10-fills-a-day cap warned up front.
@@ -49,27 +54,59 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    page it fills `registrations_N__RegistrationId` / `registrations_N__PostCode`
    (matched by id/name, case-insensitively, with a class/positional fallback),
    writing values through the native setter + input/change events so plain,
-   jQuery-validated and React forms all accept them. The group's data is embedded
-   in the bookmark, so nothing is fetched on the day. Bookmarklets are generated
+   jQuery-validated and React forms all accept them. Bookmarklets are generated
    client-side from the SAME autofill CSV the extension uses (parsed by
-   `parseAutofillCsv`), so there is no backend change and both routes stay in step.
-   Verified against a saved copy of the real 2023 `gfl/addregistrations` page.
+   `parseAutofillCsv`), so the extension route stays in step with no backend
+   change needed just to keep them consistent. Verified against a saved copy of
+   the real 2023 `gfl/addregistrations` page.
 
-   **Data-driven versioning (2026-09-17):** because a bookmark, once imported into
-   a real browser, is a static copy that can't know when the autofill file behind
-   it changes, every bookmarklet/folder/filename is stamped with the SAME
-   `lastModified` timestamp the backend already returns from `GET /files` (see
-   `fetchStoredFiles`, `useAutofillGroups`, and the existing "Groups last updated"
-   text) - turned into a short, filename-safe token by `versionStamp()`, e.g.
-   `17 Sep 14.02`. It shows up in the bookmark's own title, in the downloaded
-   folder/file name, and in the fill-confirmation banner the bookmarklet itself
-   shows on click. `DocumentationSection` also remembers (localStorage, per sale)
-   the version last actually downloaded and compares it against the live one on
-   every visit, showing a `doc-warning` banner when they differ - all without any
-   network call from the bookmarklet itself, so the no-network sale-day guarantee
-   above is unchanged. Re-downloading when nothing changed reproduces the exact
-   same stamp (it's keyed off the data's own timestamp, not `Date.now()`), so it
-   never manufactures a false "stale" duplicate.
+   **Hybrid live-fetch, with an embedded fallback (2026-09-17):** a bookmarklet's
+   data used to be baked in once, at generation time, and then sat unchanged in
+   the user's real browser bookmarks for as long as they kept it - correct only
+   until the underlying spreadsheet was next re-ingested. Now every bookmarklet
+   ALSO carries the URL of its sale's live, structured group data
+   (`GET /files/{filename}/groups`, served by `UploadServiceController.
+   DownloadGroups` from a JSON sidecar `UploadServiceController.Ingest` writes
+   alongside the CSV - see `AutofillStore.SaveGroupsAsync`), and tries that
+   first on click: a single fetch, aborted after 4 seconds, cross-origin, from
+   whatever page happens to be open (the actual registration page, on a domain
+   this app has no way to know in advance - the service's CORS policy already
+   allows any origin regardless, see the comment in `UploaderService/
+   Program.cs`). Only if that fails - offline, timeout, the registration page's
+   own CSP blocking the request, nothing re-ingested since the bookmark was made
+   - does it fall back to the data embedded at generation time, exactly as
+   bookmarklets always worked before this. The confirmation banner the
+   bookmarklet shows on click says plainly which one was used ("live data" vs
+   "offline backup data"), so nobody has to guess. This is why there's no
+   staleness-detection UI on this page any more (an earlier version of this
+   feature stamped every bookmark/folder/filename with the data's timestamp and
+   warned when they drifted apart): the live fetch means a bookmark generated
+   weeks ago still gets today's data on the day, in the common case, so the
+   folder/filename/bookmark title are back to a single stable form with no
+   version suffix (`bookmarkFolderName`, `bookmarkletTitle`).
+
+   The JSON sidecar is written from the SAME already-parsed `RegistrationGroup`
+   data `Common/BusWankers.cs`'s `GenerateAutofillTextFromGroups` turns into CSV
+   text - not re-derived by parsing that CSV back - so there is exactly one place
+   (`UploadServiceController.Ingest`) that turns a spreadsheet into groups, and
+   the bookmarklet's own (deliberately old-school) JavaScript never has to parse
+   CSV at all.
+
+   **One bookmark for the whole sale (2026-09-17):** a browser page cannot write
+   to the bookmarks bar itself - that's deliberately not exposed to web content
+   by any browser, which is exactly why the folder-download-then-import route
+   above needs a native "Import bookmarks from HTML" dialog to do it at all. The
+   one thing a page CAN do in a single user gesture is let someone drag ONE link
+   onto the bar, so `SaleBookmarklet`/`saleBookmarkletSource` builds a single
+   bookmarklet (`SALE_FILL_SOURCE`) covering every group in a sale: on click it
+   live-fetches (or falls back to the data embedded at generation time, on the
+   same terms as the per-group `FILL_SOURCE`) every group, then shows a plain
+   tap-to-choose overlay so the person picks their own group before it fills the
+   page. This is now the Documentation tab's primary, recommended route, with
+   the older per-group bookmarklets and the whole-folder download demoted to an
+   "advanced options" `<details>` for anyone who'd rather have a bookmark
+   already set to a specific group, or is installing on someone else's browser.
+
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
    order) as of the last ingest. `nnnn` is the festival year, read from that tab's
@@ -162,12 +199,20 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/IngestBar.jsx` / `.css` - The upload bar (`POST /ingest`)
 - `src/components/RunningOrderSection.jsx` / `.css` - The collapsible
   *Glasto nnnn Running Order* list (`GET /running-order`)
-- `src/bookmarklet.js` - `parseAutofillCsv` (AutoFill CSV -> groups), `FILL_SOURCE`
-  (the fill routine embedded in every bookmarklet), `bookmarkletHref` /
-  `bookmarkletSource` / `bookmarkletTitle`, and `runFillOnThisPage` (runs the same
-  routine against the Test Form tab)
-- `src/components/GroupFillPanel.jsx` / `.css` - The per-group cards on the
-  Documentation tab: draggable bookmarklet, Try-it button, copy/paste table
+- `src/bookmarklet.js` - `parseAutofillCsv` (AutoFill CSV -> groups),
+  `FILL_SOURCE` / `bookmarkletHref` / `bookmarkletSource` / `bookmarkletTitle`
+  / `runFillOnThisPage` (the per-group bookmarklet: live fetch of the sale's
+  groups URL with a timed fallback to the embedded data, see the file's own
+  header comment), and `SALE_FILL_SOURCE` / `saleBookmarkletHref` /
+  `saleBookmarkletSource` / `saleBookmarkletTitle` / `runSaleFillOnThisPage`
+  (the single whole-sale bookmarklet - same live-fetch/fallback rules, plus
+  the tap-to-choose group picker)
+- `src/components/SaleBookmarklet.jsx` / `.css` - The single, primary
+  whole-sale bookmarklet on the Documentation tab: one draggable link, a
+  Try-it button
+- `src/components/GroupFillPanel.jsx` / `.css` - The per-group cards, now
+  under the Documentation tab's "advanced options": draggable bookmarklet,
+  Try-it button, copy/paste table
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
   dropdown, key dates, the bookmarklet steps, and the collapsed extension
   instructions. `SALE_INFO` at the top of the file is the single place that
@@ -177,7 +222,8 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
   reading, `fetchStoredFiles`, `fetchRunningOrder`, `fetchAutofillGroups`,
-  `ingestWorkbook`, `downloadStoredFile`, `saveBlob`)
+  `groupsUrlFor` (the absolute URL baked into bookmarklets for their live
+  fetch), `ingestWorkbook`, `downloadStoredFile`, `saveBlob`)
 - `src/index.js` - Entry point
 - `public/` - Static assets referenced by the page: the screenshots (`Hippies_1.png`,
   `sync.png`, `formfield.png`, ...) and `DannyVid.mp4`. No autofill files belong here
