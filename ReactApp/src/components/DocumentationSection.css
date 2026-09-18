@@ -181,9 +181,11 @@
   }
 }
 
-/* Method chooser: two equal cards, bookmark vs extension (2026-09-16) */
+/* Method chooser: extension / bookmark / copy&paste cards (2026-09-16,
+   reordered + pros/cons added 2026-09-18 - extension is the default and
+   sits on the left because it's the one used in previous buying rounds). */
 .doc-section .method-chooser {
-  max-width: 760px;
+  max-width: 960px;
   margin: 25px auto 10px;
 }
 
@@ -200,7 +202,7 @@
 
 .doc-section .method-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
 
@@ -259,7 +261,27 @@
   color: #555;
 }
 
-@media (max-width: 640px) {
+.doc-section .method-card-proscons {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.doc-section .method-card-proscons-block {
+  display: block;
+  margin-top: 6px;
+}
+
+.doc-section .method-card-pros strong {
+  color: #1a7f37;
+}
+
+.doc-section .method-card-cons strong {
+  color: #a4231b;
+}
+
+@media (max-width: 820px) {
   .doc-section .method-cards {
     grid-template-columns: 1fr;
   }
