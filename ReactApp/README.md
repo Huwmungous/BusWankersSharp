@@ -272,6 +272,21 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
      with a tooltip (title attribute) listing each source sale and its
      value so the clash can be tracked down and fixed at the source.
 
+   Also since 2026-09-18: each source value is separately checked against
+   `isValidUkPostcode` (`src/runningOrder.js`) - a shape check (1-2
+   letters, 1-2 digits, then a digit and two letters, or the historical
+   `GIR 0AA`), not a real deliverability lookup, so it catches an obvious
+   typo (a name pasted into the wrong cell, a digit swapped for a letter,
+   a postcode missing its inward part) without knowing which area codes
+   really exist. A single agreed value that fails the check renders with
+   the amber **"⚠"**-suffixed `.running-order-postcode-invalid` style
+   instead of plain text, tooltip "Doesn't look like a valid UK postcode";
+   a conflict where one or more of the clashing values is also malformed
+   still shows the conflict warning, with "(invalid format)" appended
+   against the relevant source(s) in the tooltip rather than as a second,
+   separate warning.
+
+
    The roster-sheet `RosterReader`/`RunningOrderEntry` postcode plumbing
    from 2026-09-18 is left in place (harmless, and correct if that sheet
    ever does get a working Postcode column) but the frontend no longer

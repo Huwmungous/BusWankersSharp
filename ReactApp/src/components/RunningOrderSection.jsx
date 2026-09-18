@@ -38,6 +38,15 @@ const SALE_KEYS = Object.keys(SALE_INFO).filter((key) => key !== 'Demo');
 // two sales disagree the cell shows a conflict warning (title tooltip
 // lists every sale's value) rather than silently picking one.
 //
+// Invalid postcodes (2026-09-18): combinePostcodes also checks each
+// source's value against isValidUkPostcode (a shape check, not a real
+// deliverability lookup - see its doc comment). A single agreed value that
+// fails that check renders with the "invalid format" warning style rather
+// than as a normal postcode; a conflict where one or more of the clashing
+// values is also malformed notes that in the tooltip alongside the clash
+// itself, rather than as a separate warning.
+
+//
 // runningOrder: { year, sheet, generatedAt, entries: [{ regNumber, firstName,
 // lastName, name, postCode }] } from GET /running-order, or null when no
 // roster has been ingested yet. `year` is passed separately because the
@@ -162,7 +171,8 @@ const RunningOrderSection = ({
                   // sheet has one (currently always blank - see the doc
                   // comment above). combinePostcodes flags a genuine
                   // disagreement between sources rather than silently
-                  // picking one.
+                  // picking one, and separately flags a value (agreed or
+                  // not) that isn't shaped like a real UK postcode.
                   const postcodeSources = SALE_KEYS
                     .map((key) => ({
                       source: SALE_INFO[key].folderLabel,
@@ -172,25 +182,37 @@ const RunningOrderSection = ({
                   if (e.postCode) postcodeSources.push({ source: 'roster', value: e.postCode });
                   const postcodeInfo = combinePostcodes(postcodeSources);
 
+                  const postcodeCellClass = postcodeInfo.conflict
+                    ? ' running-order-postcode-conflict'
+                    : postcodeInfo.invalid
+                      ? ' running-order-postcode-invalid'
+                      : '';
+                  const postcodeTitle = postcodeInfo.conflict
+                    ? `Postcodes don't match:\n${postcodeInfo.sources
+                        .map((s) => `${s.source}: ${s.value}${s.invalid ? ' (invalid format)' : ''}`)
+                        .join('\n')}`
+                    : postcodeInfo.invalid
+                      ? "Doesn't look like a valid UK postcode"
+                      : undefined;
+
                   return (
                     <tr key={`${e.regNumber}-${i}`}>
                       <td className="running-order-pos">{i + 1}</td>
                       <td className="running-order-reg">{e.regNumber}</td>
                       <td>{e.name || [e.firstName, e.lastName].filter(Boolean).join(' ')}</td>
-                      <td
-                        className={`running-order-postcode${postcodeInfo.conflict ? ' running-order-postcode-conflict' : ''}`}
-                        title={
-                          postcodeInfo.conflict
-                            ? `Postcodes don't match:\n${postcodeInfo.sources.map((s) => `${s.source}: ${s.value}`).join('\n')}`
-                            : undefined
-                        }
-                      >
+                      <td className={`running-order-postcode${postcodeCellClass}`} title={postcodeTitle}>
                         {postcodeInfo.conflict ? (
                           '⚠ conflict'
+                        ) : postcodeInfo.value ? (
+                          <>
+                            {postcodeInfo.value}
+                            {postcodeInfo.invalid ? ' ⚠' : ''}
+                          </>
                         ) : (
-                          postcodeInfo.value || <span className="running-order-group-empty">—</span>
+                          <span className="running-order-group-empty">—</span>
                         )}
                       </td>
+
                       {SALE_KEYS.map((key) => {
                         const label = groupLabelForRegistration(lookupsBySale[key], e.regNumber);
                         return (

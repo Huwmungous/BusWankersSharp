@@ -98,30 +98,56 @@ export function postcodeForRegistration(postcodeLookup, registrationId) {
 // conflict.
 const normalisePostcodeValue = (value) => String(value || '').replace(/\s+/g, '').toUpperCase();
 
+// A UK postcode has a fairly rigid shape - 1-2 letters, 1-2 digits (with an
+// occasional extra letter for a handful of inner-London districts), then a
+// digit and two letters (or the single historical special case, GIR 0AA).
+// This isn't full Royal Mail validation - it doesn't know which area codes
+// actually exist - but it reliably catches the kind of typo that turns up
+// in a hand-typed spreadsheet column: a transposed digit, a name pasted
+// into the wrong cell, a postcode missing its inward part. That's the
+// point here - flagging something for a human to check, not certifying
+// deliverability. Checked against the same normalised (whitespace/case
+// stripped) value combinePostcodes already computes, so formatting alone
+// never trips it.
+const UK_POSTCODE_PATTERN = /^GIR0AA$|^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/;
+
+export function isValidUkPostcode(value) {
+  const normalised = normalisePostcodeValue(value);
+  return normalised.length > 0 && UK_POSTCODE_PATTERN.test(normalised);
+}
+
 // Combines every source's postcode for one person (typically one entry per
 // real sale they're in, from buildPostcodeLookup) into what the Running
 // Order cell should show. `sources` is [{ source, value }, ...] - `source`
-// is just a label for the tooltip (a sale's folderLabel, say).
+// is just a label for the tooltip (a sale's folderLabel, say). Each
+// returned source is annotated with `invalid` (per isValidUkPostcode)
+// alongside its original `source`/`value`.
 //
-//  - no non-blank values: { value: '', conflict: false, sources: [] } -
-//    renders as the usual em-dash "nothing on file yet".
+//  - no non-blank values: { value: '', conflict: false, invalid: false,
+//    sources: [] } - renders as the usual em-dash "nothing on file yet".
 //  - all non-blank values agree (after normalising): { value: <the first
-//    one, in its original casing/spacing>, conflict: false, sources }.
-//  - two or more disagree: { value: '', conflict: true, sources } - the
-//    cell renders a warning instead of guessing which one's right, and
-//    `sources` is what a tooltip lists to show the clash.
+//    one, in its original casing/spacing>, conflict: false, invalid: <is
+//    that value a valid UK postcode>, sources }.
+//  - two or more disagree: { value: '', conflict: true, invalid: <does any
+//    source fail validation>, sources } - the cell renders a warning
+//    instead of guessing which one's right, and `sources` is what a
+//    tooltip lists to show the clash (and which entries, if any, are also
+//    malformed).
 export function combinePostcodes(sources) {
   const nonBlank = (sources || []).filter((s) => s && s.value);
-  if (nonBlank.length === 0) return { value: '', conflict: false, sources: [] };
+  if (nonBlank.length === 0) return { value: '', conflict: false, invalid: false, sources: [] };
+
+  const annotated = nonBlank.map((s) => ({ ...s, invalid: !isValidUkPostcode(s.value) }));
 
   const seen = new Map(); // normalised -> first-seen raw value
-  for (const s of nonBlank) {
+  for (const s of annotated) {
     const norm = normalisePostcodeValue(s.value);
     if (!seen.has(norm)) seen.set(norm, s.value);
   }
 
   if (seen.size === 1) {
-    return { value: nonBlank[0].value, conflict: false, sources: nonBlank };
+    return { value: annotated[0].value, conflict: false, invalid: annotated[0].invalid, sources: annotated };
   }
-  return { value: '', conflict: true, sources: nonBlank };
+  return { value: '', conflict: true, invalid: annotated.some((s) => s.invalid), sources: annotated };
 }
+
