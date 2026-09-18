@@ -491,12 +491,11 @@ export const SALE_FILL_SOURCE = `
       alert('Bus Wankers: no group data available - nothing has been ingested for this sale yet.');
       return;
     }
-    if (groups.length === 1) {
-      fillWithData(groups[0].label, groups[0].members, source);
-      return;
-    }
+    // Always show the picker, even when the sale only has one group, so
+    // behaviour is identical regardless of group count (2026-09-18).
     showPicker(groups, source);
   }
+
 
   if (!U || !window.fetch) {
     withGroups(ALLM, 'offline backup data');

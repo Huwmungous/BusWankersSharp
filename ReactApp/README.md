@@ -145,9 +145,19 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    profiles once imported into AutoFill Options/Lightning Autofill, which has
    no idea of "sale" itself and previously saw two identically-named
    "Group-A" profiles the moment someone imported both sales' files.
-   `groupLabelFromProfileName` (the frontend's own CSV parser) had its regex
-   loosened from `^Group-(.+)$` to `Group-(.+)$` so it still recovers the bare
+   \`groupLabelFromProfileName\` (the frontend's own CSV parser) had its regex
+   loosened from \`^Group-(.+)$\` to \`Group-(.+)$\` so it still recovers the bare
    letter from a sale-prefixed name.
+
+   **Whole-sale bookmarklet always confirms the group (2026-09-18):** the
+   tap-to-choose picker in \`SALE_FILL_SOURCE\`/\`withGroups\` used to skip
+   straight to \`fillWithData\` when a sale only had one group, so a
+   single-group sale filled the page with no confirmation while a
+   multi-group sale always showed the picker first. \`withGroups\` now always
+   calls \`showPicker\`, even for a single group, so the behaviour - and the
+   chance to bail out via Cancel - is identical no matter how many groups
+   the sale has.
+
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
