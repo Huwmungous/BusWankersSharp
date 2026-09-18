@@ -144,7 +144,7 @@ const DocumentationSection = ({
   const folderName = bookmarkFolderName(info.folderLabel);
   const downloadBookmarkFolder = () => {
     if (!groups || groups.length === 0) return;
-    const html = bookmarkFolderHtml(groups, folderName, year, groupsUrl);
+    const html = bookmarkFolderHtml(groups, folderName, year, groupsUrl, info.folderLabel);
     saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel));
   };
 
@@ -343,6 +343,7 @@ const DocumentationSection = ({
                   error={groupsError}
                   year={year}
                   saleLabel={info.label}
+                  saleFolderLabel={info.folderLabel}
                   onTried={showTestForm}
                   nameLookup={nameLookup}
                   groupsUrl={groupsUrl}

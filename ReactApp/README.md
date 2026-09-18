@@ -38,7 +38,8 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
      Bookmarks"* button producing a standard bookmarks HTML file
      (`bookmarkFolderHtml`) that imports as one folder holding a bookmark per
      group, with per-browser import steps; and, below that, each group's own
-     draggable **Glasto nnnn - Fill Group X** bookmarklet, a *Try it on the
+     draggable **Glasto nnnn - Fill \<Sale\> Group X** bookmarklet (sale-qualified -
+     see "Groups are named per sale" below), a *Try it on the
      Test Form* button, and (collapsed) a copy/paste table of the group's reg
      numbers and postcodes (`GroupFillPanel`).
    - **AutoFill Options extension** (`ExtensionInstructions`) - the original
@@ -117,6 +118,36 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    Pros/Cons list (`ProsCons` in `DocumentationSection.jsx`) - rendered as
    plain `<span>`/`<br>` rather than `<ul>`/`<dl>` because the cards are
    `<button>`s, whose content model is phrasing content only.
+
+   **Groups are named per sale, not just by letter (2026-09-18):** a "Group A"
+   is only unique within its own sale - the Coach sale's Group A and the
+   General sale's Group A are different people entirely - so every place a
+   group is named to a person now reads "Coach Group A" / "General Group A" /
+   "Coach Resale Group A" / "General Resale Group A" rather than a bare
+   "Group A". `group.label` itself is still just the raw letter (it has to
+   stay that way to match the live groups JSON's own label field - see
+   `liveMembersFor` in `FILL_SOURCE`), so the sale prefix is layered on at
+   display/generation time by `groupDisplayLabel(saleFolderLabel, label)`
+   (`src/bookmarklet.js`) - used by `bookmarkletTitle`, the `GroupFillPanel`/
+   `GroupsSection` card headings, and (built into `S`, a fourth variable now
+   in scope alongside `M`/`G`/`U`) `FILL_SOURCE` and `SALE_FILL_SOURCE`'s own
+   on-page confirmation banners and the whole-sale bookmarklet's tap-to-choose
+   picker. `saleFolderLabel` is always `SALE_INFO[...].folderLabel` from
+   `src/saleInfo.js` ("Coach", "General", "Coach Resale", "General Resale").
+
+   This reaches past the frontend too: the backend now bakes the same prefix
+   into the generated autofill CSV's profile names (`BusWankers.
+   GenerateAutofillTextFromGroups`, given the sale's label via
+   `UploadServiceController.SaleFolderLabelFor` - kept in step with
+   `saleFolderLabel` above by hand, since one's C# and the other's JS) and the
+   live groups JSON's `Name` field (`ToGroupsDocument`) - so "Coach Group-A"
+   and "General Group-A" show up as two clearly different, non-colliding
+   profiles once imported into AutoFill Options/Lightning Autofill, which has
+   no idea of "sale" itself and previously saw two identically-named
+   "Group-A" profiles the moment someone imported both sales' files.
+   `groupLabelFromProfileName` (the frontend's own CSV parser) had its regex
+   loosened from `^Group-(.+)$` to `Group-(.+)$` so it still recovers the bare
+   letter from a sale-prefixed name.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname

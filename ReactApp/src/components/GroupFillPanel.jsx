@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { bookmarkletHref, bookmarkletSource, bookmarkletTitle, runFillOnThisPage } from '../bookmarklet';
+import { bookmarkletHref, bookmarkletSource, bookmarkletTitle, groupDisplayLabel, runFillOnThisPage } from '../bookmarklet';
 import { nameForRegistration } from '../runningOrder';
 import './GroupFillPanel.css';
 
@@ -7,11 +7,16 @@ import './GroupFillPanel.css';
 // warns on javascript: URLs in JSX and a future version will refuse them,
 // and this is the one legitimate use - a bookmarklet the user drags to
 // their bookmarks bar.
-const BookmarkletLink = ({ group, year, groupsUrl }) => {
+//
+// saleFolderLabel (2026-09-18): SALE_INFO[...].folderLabel, baked into the
+// bookmark's title and its own confirmation banner so it reads "Coach
+// Group A" rather than an ambiguous "Group A" - see groupDisplayLabel in
+// ../bookmarklet.js.
+const BookmarkletLink = ({ group, year, groupsUrl, saleFolderLabel }) => {
   const ref = useRef(null);
   useEffect(() => {
-    if (ref.current) ref.current.setAttribute('href', bookmarkletHref(group, groupsUrl));
-  }, [group, groupsUrl]);
+    if (ref.current) ref.current.setAttribute('href', bookmarkletHref(group, groupsUrl, saleFolderLabel));
+  }, [group, groupsUrl, saleFolderLabel]);
   return (
     <a
       ref={ref}
@@ -23,12 +28,12 @@ const BookmarkletLink = ({ group, year, groupsUrl }) => {
         // but confusing (it would fill the hidden Test Form). Explain instead.
         e.preventDefault();
         window.alert(
-          `Don't click it here - drag "${bookmarkletTitle(group, year)}" up to your bookmarks bar ` +
+          `Don't click it here - drag "${bookmarkletTitle(group, year, saleFolderLabel)}" up to your bookmarks bar ` +
           '(or right-click it and choose "Bookmark link"). Then, on the Glastonbury registration page, click the bookmark.',
         );
       }}
     >
-      {bookmarkletTitle(group, year)}
+      {bookmarkletTitle(group, year, saleFolderLabel)}
     </a>
   );
 };
@@ -69,13 +74,15 @@ export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => 
 // nameLookup: registration number -> "First Last" (see runningOrder.js),
 // built from the ingested roster - purely a display convenience for the
 // copy/paste table, so a missing entry (roster not ingested, or a genuine
-// mismatch) just shows as blank rather than an error.
-const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl }) => {
+// mismatch) just shows as blank rather than an error. saleFolderLabel
+// (2026-09-18): SALE_INFO[...].folderLabel - see groupDisplayLabel in
+// ../bookmarklet.js for why the heading and bookmark both need it.
+const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl, saleFolderLabel }) => {
   const [showDetails, setShowDetails] = useState(false);
   const count = group.members.length;
 
   const tryOnTestForm = () => {
-    runFillOnThisPage(group, groupsUrl);
+    runFillOnThisPage(group, groupsUrl, saleFolderLabel);
     if (onTried) onTried(group);
   };
 
@@ -83,11 +90,11 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl }) => {
     <li className="bw-group">
       <div className="bw-group-head">
         <div className="bw-group-title">
-          <strong>Group {group.label}</strong>
+          <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="bw-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
         </div>
         <div className="bw-group-actions">
-          <BookmarkletLink group={group} year={year} groupsUrl={groupsUrl} />
+          <BookmarkletLink group={group} year={year} groupsUrl={groupsUrl} saleFolderLabel={saleFolderLabel} />
           <button type="button" className="bw-try" onClick={tryOnTestForm} title="Fill the Test Form tab with this group, exactly as the bookmark would">
             Try it on the Test Form
           </button>
@@ -120,7 +127,7 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl }) => {
           </table>
           <p className="bw-note">
             Advanced: the bookmark&rsquo;s code, for adding a bookmark by hand (e.g. on iPhone: bookmark any page, then edit its address and paste this in).{' '}
-            <CopyButton text={`javascript:${encodeURIComponent(bookmarkletSource(group, groupsUrl))}`} label="Copy bookmark code" copiedLabel="Code copied" />
+            <CopyButton text={`javascript:${encodeURIComponent(bookmarkletSource(group, groupsUrl, saleFolderLabel))}`} label="Copy bookmark code" copiedLabel="Code copied" />
           </p>
         </div>
       )}
@@ -129,13 +136,18 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl }) => {
 };
 
 // groups: from fetchAutofillGroups (null = file not in store), status:
-// loading | ready | error. saleLabel is for the wording only. nameLookup:
-// see GroupCard - defaults to an empty Map so callers that don't have a
-// roster yet (or don't care) can simply omit it. groupsUrl: this sale's live
-// group-data URL (see groupsUrlFor in api/autofillApi.js), baked into every
+// loading | ready | error. saleLabel is for the wording only (the long
+// form, e.g. "Coach Tickets" - see SALE_INFO in saleInfo.js); saleFolderLabel
+// is the short form (e.g. "Coach") baked into every group's displayed name
+// and bookmark (see groupDisplayLabel in ../bookmarklet.js), defaulting to
+// '' for a caller that hasn't got one, in which case groups just read
+// "Group A" rather than "Coach Group A". nameLookup: see GroupCard -
+// defaults to an empty Map so callers that don't have a roster yet (or
+// don't care) can simply omit it. groupsUrl: this sale's live group-data
+// URL (see groupsUrlFor in api/autofillApi.js), baked into every
 // bookmarklet so it can check for fresher data at click time - optional,
 // defaults to '' (bookmarklets generated fallback-only).
-const GroupFillPanel = ({ groups, status, error, year, saleLabel, onTried, nameLookup = new Map(), groupsUrl = '' }) => {
+const GroupFillPanel = ({ groups, status, error, year, saleLabel, saleFolderLabel = '', onTried, nameLookup = new Map(), groupsUrl = '' }) => {
   if (status === 'loading') {
     return <p className="bw-note">Loading the {saleLabel.toLowerCase()} groups…</p>;
   }
@@ -157,7 +169,7 @@ const GroupFillPanel = ({ groups, status, error, year, saleLabel, onTried, nameL
   return (
     <ul className="bw-groups">
       {groups.map((g) => (
-        <GroupCard key={g.code} group={g} year={year} onTried={onTried} nameLookup={nameLookup} groupsUrl={groupsUrl} />
+        <GroupCard key={g.code} group={g} year={year} onTried={onTried} nameLookup={nameLookup} groupsUrl={groupsUrl} saleFolderLabel={saleFolderLabel} />
       ))}
     </ul>
   );
