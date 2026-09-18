@@ -236,16 +236,39 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    group letter (not sale-qualified) since the column header already says
    which sale.
 
-   Also since 2026-09-18: a `Postcode` column, straight after `Name`. The
-   `Glasto nnnn` roster sheet turns out to carry a `Postcode` column
-   already (same as every sale sheet - `Common/ExcelFileHelper.cs`'s
-   `IsSaleSheet` comment notes it), but `RosterReader` had never read it.
-   `RosterReader.Read` now looks for a `Postcode` heading (case-insensitive,
-   same convention as `Group`/`Reg Number`/`Postcode` on the sale sheets) and
-   carries it through `RosterEntry` -> `RunningOrderEntry` -> the
-   `GET /running-order` JSON as `postCode`; an older-shaped roster sheet
-   with no such column still reads fine, just with `postCode: ''` for
-   everyone. See `Common.Tests/RosterReaderTests.cs`.
+   Also since 2026-09-18: a `Postcode` column, straight after `Name`. It was
+   first wired up to read a `Postcode` heading on the `Glasto nnnn` roster
+   sheet itself (`RosterReader.Read`, carried through `RosterEntry` ->
+   `RunningOrderEntry` -> the `GET /running-order` JSON as `postCode` - see
+   `Common.Tests/RosterReaderTests.cs`), on the strength of a comment in
+   `Common/ExcelFileHelper.cs` saying the roster sheet has that column too.
+   In practice it doesn't - Hugh confirmed the live column rendered blank for
+   everyone - so as of 2026-09-19 the Postcode column is instead built from
+   the four real sales' own group files, which reliably carry it. This is
+   the same data `useAutofillGroups` already loads for the per-sale group
+   columns, so no extra fetch: `buildPostcodeLookup`/
+   `postcodeForRegistration` in `src/runningOrder.js` mirror
+   `buildGroupLookup`/`groupLabelForRegistration` exactly, just reading
+   `postCode` instead of the group letter, into a
+   `postcodeLookupsBySale` map alongside the existing `lookupsBySale`.
+
+   Because the same person's postcode is typed independently into each sale
+   they're in, the sales can disagree (a typo, or someone who moved) - so
+   `combinePostcodes` compares every sale's value for that person, after
+   normalising away whitespace/case (`normalisePostcodeValue`, the same
+   convention `bookmarklet.js`'s `normalisePostcode` uses), and:
+   - no sale has a postcode on file: the cell shows the usual dash.
+   - every sale that has one agrees: the cell shows it plainly.
+   - two sales disagree: the cell shows a bold **⚠ conflict** warning
+     (`.running-order-postcode-conflict`) instead of silently picking one,
+     with a tooltip (title attribute) listing each source sale and its
+     value so the clash can be tracked down and fixed at the source.
+
+   The roster-sheet `RosterReader`/`RunningOrderEntry` postcode plumbing
+   from 2026-09-18 is left in place (harmless, and correct if that sheet
+   ever does get a working Postcode column) but the frontend no longer
+   reads `postCode` off the `/running-order` entries themselves.
+
 
 4. **Test Form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
