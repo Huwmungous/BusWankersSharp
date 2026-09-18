@@ -80,3 +80,21 @@
   font-family: monospace;
   white-space: nowrap;
 }
+
+.running-order .running-order-group-col {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.running-order .running-order-group-cell {
+  text-align: center;
+  font-family: monospace;
+  font-weight: bold;
+  color: #444;
+}
+
+.running-order .running-order-group-empty {
+  font-family: Arial, sans-serif;
+  font-weight: normal;
+  color: #ccc;
+}
