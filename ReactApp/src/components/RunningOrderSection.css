@@ -95,6 +95,13 @@
   white-space: nowrap;
 }
 
+.running-order .running-order-postcode-invalid {
+  color: #8a6d3b;
+  cursor: help;
+  white-space: nowrap;
+}
+
+
 
 .running-order .running-order-group-col {
   text-align: center;
