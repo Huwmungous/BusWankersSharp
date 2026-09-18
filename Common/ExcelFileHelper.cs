@@ -12,16 +12,20 @@ namespace Autofills.Common
     {
         /// <summary>
         /// Sheets that are never a sale, whatever the workbook contains: the master
-        /// roster and the queue-URL scratchpad. Compared trimmed and
-        /// case-insensitive, since the real "Starting Lineup" sheet has been seen
-        /// with a trailing space in its actual tab name.
+        /// roster, the queue-URL tab, and (2026-09-18) a "Scratchpad" tab Hugh uses
+        /// for his own notes while building the workbook - not to be confused with
+        /// the "URL" tab above, which is a different, longer-standing thing despite
+        /// the similar name. Compared trimmed and case-insensitive, since the real
+        /// "Starting Lineup" sheet has been seen with a trailing space in its actual
+        /// tab name.
         ///
         /// This list is only a fast path - the real test is the header row (see
         /// IsSaleSheet). The 2027 workbook renamed the master roster "Glasto 2027",
         /// which no fixed name list would have caught.
         /// </summary>
         private static readonly HashSet<string> NonSaleSheetNames =
-            new(StringComparer.OrdinalIgnoreCase) { "Starting Lineup", "URL" };
+            new(StringComparer.OrdinalIgnoreCase) { "Starting Lineup", "URL", "Scratchpad" };
+
 
         /// <summary>
         /// A sale sheet is one whose header row has a "Group" column alongside
