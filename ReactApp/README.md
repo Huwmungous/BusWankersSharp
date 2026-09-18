@@ -102,10 +102,21 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    live-fetches (or falls back to the data embedded at generation time, on the
    same terms as the per-group `FILL_SOURCE`) every group, then shows a plain
    tap-to-choose overlay so the person picks their own group before it fills the
-   page. This is now the Documentation tab's primary, recommended route, with
-   the older per-group bookmarklets and the whole-folder download demoted to an
-   "advanced options" `<details>` for anyone who'd rather have a bookmark
-   already set to a specific group, or is installing on someone else's browser.
+   page. The older per-group bookmarklets and the whole-folder download are
+   demoted to an "advanced options" `<details>` for anyone who'd rather have a
+   bookmark already set to a specific group, or is installing on someone
+   else's browser.
+
+   **Three routes, with pros/cons, extension left/default (2026-09-18):** the
+   method-chooser cards on the Documentation tab now read left to right as
+   AutoFill Options extension (the route used in previous buying rounds, so
+   it's the default `chooseMethod`/`readSavedMethod` falls back to and the
+   leftmost card), Bookmark, and a plain-text Copy & paste card that links
+   straight to the standalone Groups tab (`#groups`, see `GroupsSection`) as
+   the last-resort fallback. Each of the first two cards carries a short
+   Pros/Cons list (`ProsCons` in `DocumentationSection.jsx`) - rendered as
+   plain `<span>`/`<br>` rather than `<ul>`/`<dl>` because the cards are
+   `<button>`s, whose content model is phrasing content only.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
@@ -214,11 +225,13 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
   under the Documentation tab's "advanced options": draggable bookmarklet,
   Try-it button, copy/paste table
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
-  dropdown, key dates, the bookmarklet steps, and the collapsed extension
-  instructions. `SALE_INFO` at the top of the file is the single place that
-  defines each sale's label, heading, dates, cost and filename - a new sale sheet
-  needs an entry here to appear in the dropdown (the backend handles any sheet
-  name without a code change)
+  dropdown, key dates, the three-way method chooser (extension/bookmark/copy
+  & paste, each with a short Pros/Cons list - extension is the default and
+  leftmost), the bookmarklet steps, the collapsed extension instructions, and
+  the copy & paste method's link to the Groups tab. `SALE_INFO` at the top of
+  the file is the single place that defines each sale's label, heading,
+  dates, cost and filename - a new sale sheet needs an entry here to appear
+  in the dropdown (the backend handles any sheet name without a code change)
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
   reading, `fetchStoredFiles`, `fetchRunningOrder`, `fetchAutofillGroups`,
