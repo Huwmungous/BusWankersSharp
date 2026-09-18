@@ -168,12 +168,18 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (`public/favicon.svg`, a bus-and-ticket mark referenced from
    `public/index.html`/`public/manifest.json`) where before there was none -
    `favicon.ico`/`logo192.png`/`logo512.png` were referenced by the
-   Create-React-App template but never actually existed. Browsers generally
-   show the favicon of the page you dragged a link FROM for that bookmark
-   (not the bookmarklet's own, since a `javascript:` URL has no site of its
-   own to fetch one from), so this icon should now show up next to the
-   bookmark for anyone who (re-)creates it from this app's own pages -
-   exactly how bookmarks are always installed here.
+   Create-React-App template but never actually existed. **This only fixes
+   the app's own icon (browser tab, PWA manifest) - it does NOT put an icon
+   on the bookmarks bar.** A `javascript:` bookmarklet never gets a real
+   favicon in Chrome, no matter what icon the page it was dragged from has -
+   this is a long-standing open Chromium limitation
+   (https://issues.chromium.org/issues/40332768), not something the app can
+   influence from the page side. "Coach Filler"/"General Filler" etc. keep
+   Chrome's generic bookmark icon; Hugh was offered a couple of workarounds
+   (a downloadable bookmarks-HTML file with the icon baked in, or a
+   third-party "Bookmark Icon Customizer" extension) and chose to live with
+   the generic icon rather than add either.
+
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
