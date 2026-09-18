@@ -208,10 +208,12 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    spreadsheet before sale morning.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
-   everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
-   order) as of the last ingest. `nnnn` is the festival year, read from that tab's
-   name, and is what every other "2027"-style mention on the page uses
-   (`src/festival.js` holds the fallback for a store with no roster yet). Since
+   everyone on the workbook's `Glasto nnnn` roster tab (reg number, name and
+   postcode, surname order) as of the last ingest. `nnnn` is the festival year,
+   read from that tab's name, and is what every other "2027"-style mention on
+   the page uses (`src/festival.js` holds the fallback for a store with no
+   roster yet).
+
    2026-09-18 the table also carries one column per real sale (`Coach`,
    `General`, `Coach Resale`, `General Resale` - the same order
    `Object.entries(SALE_INFO)` uses everywhere else, minus `Demo`: Hugh,
@@ -233,6 +235,17 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    diverging way of reading an autofill file's groups. The cell shows the RAW
    group letter (not sale-qualified) since the column header already says
    which sale.
+
+   Also since 2026-09-18: a `Postcode` column, straight after `Name`. The
+   `Glasto nnnn` roster sheet turns out to carry a `Postcode` column
+   already (same as every sale sheet - `Common/ExcelFileHelper.cs`'s
+   `IsSaleSheet` comment notes it), but `RosterReader` had never read it.
+   `RosterReader.Read` now looks for a `Postcode` heading (case-insensitive,
+   same convention as `Group`/`Reg Number`/`Postcode` on the sale sheets) and
+   carries it through `RosterEntry` -> `RunningOrderEntry` -> the
+   `GET /running-order` JSON as `postCode`; an older-shaped roster sheet
+   with no such column still reads fine, just with `postCode: ''` for
+   everyone. See `Common.Tests/RosterReaderTests.cs`.
 
 4. **Test Form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to

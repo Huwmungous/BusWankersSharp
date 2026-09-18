@@ -81,6 +81,12 @@
   white-space: nowrap;
 }
 
+.running-order .running-order-postcode {
+  font-family: monospace;
+  white-space: nowrap;
+  color: #666;
+}
+
 .running-order .running-order-group-col {
   text-align: center;
   white-space: nowrap;
