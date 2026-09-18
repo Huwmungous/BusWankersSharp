@@ -3,7 +3,7 @@ import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
 import SaleBookmarklet from './SaleBookmarklet';
 import { downloadStoredFile, groupsUrlFor, saveBlob } from '../api/autofillApi';
-import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName } from '../bookmarklet';
+import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName, saleBookmarkletTitle } from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
@@ -366,8 +366,9 @@ const DocumentationSection = ({
               <li>Be on <code>glastonbury.seetickets.com</code> <em>before</em> the sale opens and wait in the queue. Don&rsquo;t refresh,
                 and don&rsquo;t open extra tabs or devices - the festival says that can get you blocked.</li>
               <li>When the registration page appears (the one asking for &ldquo;Registration Number&rdquo; and &ldquo;Postcode&rdquo; for each
-                person), click your <strong>Glasto {year} - Fill My Group ({info.folderLabel})</strong> bookmark once, then tap your
+                person), click your <strong>{saleBookmarkletTitle(info.folderLabel, year)}</strong> bookmark once, then tap your
                 own group in the list that pops up.</li>
+
               <li>Check the boxes look right - the green bar tells you how many people were filled - then click <strong>Proceed</strong>.
                 You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
             </ol>
