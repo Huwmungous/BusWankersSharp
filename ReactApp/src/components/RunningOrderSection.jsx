@@ -1,6 +1,12 @@
 import React, { useMemo } from 'react';
 import { useAutofillGroups } from '../useAutofillGroups';
-import { buildGroupLookup, groupLabelForRegistration } from '../runningOrder';
+import {
+  buildGroupLookup,
+  groupLabelForRegistration,
+  buildPostcodeLookup,
+  postcodeForRegistration,
+  combinePostcodes,
+} from '../runningOrder';
 import { SALE_INFO } from '../saleInfo';
 import './RunningOrderSection.css';
 
@@ -16,19 +22,27 @@ const formatWhen = (iso) => {
 const SALE_KEYS = Object.keys(SALE_INFO).filter((key) => key !== 'Demo');
 // The "Glasto nnnn Running Order" tab: everyone on the workbook's roster
 // sheet (the "Glasto nnnn" tab, named for the festival year) as of the last
-// ingest, in surname order, with their reg number and postcode (when the
-// roster sheet has one - 2026-09-18), plus one column per real sale
-// (2026-09-18; Demo excluded) showing which group - if any - that
-// person is in for that sale. Rendered as a native <details> (open by
-// default now it has a tab of its own) so it can still be collapsed and
-// needs no state of its own.
+// ingest, in surname order, with their reg number and postcode, plus one
+// column per real sale (2026-09-18; Demo excluded) showing which group - if
+// any - that person is in for that sale. Rendered as a native <details>
+// (open by default now it has a tab of its own) so it can still be
+// collapsed and needs no state of its own.
+//
+// Postcode (2026-09-19): the roster sheet itself turns out not to carry a
+// Postcode column in Hugh's real workbooks - RosterReader.cs reads one when
+// present, but for now e.postCode from GET /running-order is always ''. So
+// the cell is built from the per-sale group files instead (they do carry
+// it - see buildPostcodeLookup/combinePostcodes in src/runningOrder.js),
+// the same files the group columns already load. Someone in more than one
+// sale can have their postcode typed in independently for each, so when
+// two sales disagree the cell shows a conflict warning (title tooltip
+// lists every sale's value) rather than silently picking one.
 //
 // runningOrder: { year, sheet, generatedAt, entries: [{ regNumber, firstName,
 // lastName, name, postCode }] } from GET /running-order, or null when no
-// roster has been ingested yet. postCode is '' when the roster sheet has no
-// 'Postcode' column (2026-09-18, added alongside the per-sale columns).
-// `year` is passed separately because the page falls back to a
-// default when there's no roster, and the heading should still read sensibly.
+// roster has been ingested yet. `year` is passed separately because the
+// page falls back to a default when there's no roster, and the heading
+// should still read sensibly.
 //
 // storedFiles/storeStatus/storeError: the same shared file-store state
 // BusWankersPage already threads through to DocumentationSection/
@@ -39,6 +53,7 @@ const SALE_KEYS = Object.keys(SALE_INFO).filter((key) => key !== 'Demo');
 // number of hook calls) so each sale's groups load and cache exactly the
 // way Documentation/Groups already do, rather than a second, diverging
 // fetch path.
+
 
 const RunningOrderSection = ({
   year,
@@ -80,6 +95,17 @@ const RunningOrderSection = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coach.groups, general.groups, resaleCoach.groups, resaleGeneral.groups]);
 
+  // registrationNumber -> postcode, one lookup per sale, same shape and
+  // same dependency rules as lookupsBySale above - built from the same
+  // per-sale groups, just pulling postCode instead of the group letter.
+  const postcodeLookupsBySale = useMemo(() => {
+    const out = {};
+    for (const key of SALE_KEYS) {
+      out[key] = buildPostcodeLookup(groupsBySale[key].groups);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coach.groups, general.groups, resaleCoach.groups, resaleGeneral.groups]);
 
 
   let note = null;
@@ -130,24 +156,53 @@ const RunningOrderSection = ({
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e, i) => (
-                  <tr key={`${e.regNumber}-${i}`}>
-                    <td className="running-order-pos">{i + 1}</td>
-                    <td className="running-order-reg">{e.regNumber}</td>
-                    <td>{e.name || [e.firstName, e.lastName].filter(Boolean).join(' ')}</td>
-                    <td className="running-order-postcode">
-                      {e.postCode || <span className="running-order-group-empty">—</span>}
-                    </td>
-                    {SALE_KEYS.map((key) => {
-                      const label = groupLabelForRegistration(lookupsBySale[key], e.regNumber);
-                      return (
-                        <td key={key} className="running-order-group-cell">
-                          {label || <span className="running-order-group-empty">—</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {entries.map((e, i) => {
+                  // Postcode: gathered from every real sale this person is
+                  // in, plus the roster's own Postcode column when that
+                  // sheet has one (currently always blank - see the doc
+                  // comment above). combinePostcodes flags a genuine
+                  // disagreement between sources rather than silently
+                  // picking one.
+                  const postcodeSources = SALE_KEYS
+                    .map((key) => ({
+                      source: SALE_INFO[key].folderLabel,
+                      value: postcodeForRegistration(postcodeLookupsBySale[key], e.regNumber),
+                    }))
+                    .filter((s) => s.value);
+                  if (e.postCode) postcodeSources.push({ source: 'roster', value: e.postCode });
+                  const postcodeInfo = combinePostcodes(postcodeSources);
+
+                  return (
+                    <tr key={`${e.regNumber}-${i}`}>
+                      <td className="running-order-pos">{i + 1}</td>
+                      <td className="running-order-reg">{e.regNumber}</td>
+                      <td>{e.name || [e.firstName, e.lastName].filter(Boolean).join(' ')}</td>
+                      <td
+                        className={`running-order-postcode${postcodeInfo.conflict ? ' running-order-postcode-conflict' : ''}`}
+                        title={
+                          postcodeInfo.conflict
+                            ? `Postcodes don't match:\n${postcodeInfo.sources.map((s) => `${s.source}: ${s.value}`).join('\n')}`
+                            : undefined
+                        }
+                      >
+                        {postcodeInfo.conflict ? (
+                          '⚠ conflict'
+                        ) : (
+                          postcodeInfo.value || <span className="running-order-group-empty">—</span>
+                        )}
+                      </td>
+                      {SALE_KEYS.map((key) => {
+                        const label = groupLabelForRegistration(lookupsBySale[key], e.regNumber);
+                        return (
+                          <td key={key} className="running-order-group-cell">
+                            {label || <span className="running-order-group-empty">—</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+
               </tbody>
             </table>
           </>

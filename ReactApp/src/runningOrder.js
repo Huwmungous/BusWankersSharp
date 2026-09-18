@@ -62,3 +62,66 @@ export function buildGroupLookup(groups) {
 export function groupLabelForRegistration(groupLookup, registrationId) {
   return groupLookup.get(normaliseReg(registrationId)) || '';
 }
+
+// Builds a registrationNumber -> postcode lookup from one sale's groups,
+// same shape as buildGroupLookup (2026-09-19: the "Glasto nnnn" roster
+// sheet turned out not to actually have a Postcode column - see
+// RosterReader.cs - so the Running Order tab's Postcode column is built
+// from the per-sale group files instead, which do carry it). Blank
+// postcodes (an unfilled slot) are skipped rather than overwriting a real
+// one, though a genuine reg number shouldn't appear twice within one sale.
+export function buildPostcodeLookup(groups) {
+  const map = new Map();
+  if (!Array.isArray(groups)) return map;
+  for (const g of groups) {
+    for (const m of g.members || []) {
+      const key = normaliseReg(m.registrationId);
+      const value = String(m.postCode || '').trim();
+      if (key && value) map.set(key, value);
+    }
+  }
+  return map;
+}
+
+// Looks up one registration number in a lookup built by buildPostcodeLookup;
+// '' if that sale has no postcode on file for them.
+export function postcodeForRegistration(postcodeLookup, registrationId) {
+  return postcodeLookup.get(normaliseReg(registrationId)) || '';
+}
+
+// Postcodes are meant to be the same person's address whichever sale they
+// came from, but they're typed independently into each sale's export, so
+// they can genuinely disagree - a typo, or someone who moved between
+// sales. normalisePostcodeValue strips whitespace and case (the same way
+// bookmarklet.js's own normalisePostcode does for the CSV it writes) before
+// comparing, so "S70 2LD" and "S702LD" read as the same postcode, not a
+// conflict.
+const normalisePostcodeValue = (value) => String(value || '').replace(/\s+/g, '').toUpperCase();
+
+// Combines every source's postcode for one person (typically one entry per
+// real sale they're in, from buildPostcodeLookup) into what the Running
+// Order cell should show. `sources` is [{ source, value }, ...] - `source`
+// is just a label for the tooltip (a sale's folderLabel, say).
+//
+//  - no non-blank values: { value: '', conflict: false, sources: [] } -
+//    renders as the usual em-dash "nothing on file yet".
+//  - all non-blank values agree (after normalising): { value: <the first
+//    one, in its original casing/spacing>, conflict: false, sources }.
+//  - two or more disagree: { value: '', conflict: true, sources } - the
+//    cell renders a warning instead of guessing which one's right, and
+//    `sources` is what a tooltip lists to show the clash.
+export function combinePostcodes(sources) {
+  const nonBlank = (sources || []).filter((s) => s && s.value);
+  if (nonBlank.length === 0) return { value: '', conflict: false, sources: [] };
+
+  const seen = new Map(); // normalised -> first-seen raw value
+  for (const s of nonBlank) {
+    const norm = normalisePostcodeValue(s.value);
+    if (!seen.has(norm)) seen.set(norm, s.value);
+  }
+
+  if (seen.size === 1) {
+    return { value: nonBlank[0].value, conflict: false, sources: nonBlank };
+  }
+  return { value: '', conflict: true, sources: nonBlank };
+}
