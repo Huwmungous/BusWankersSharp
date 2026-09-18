@@ -115,7 +115,7 @@ public class UploadServiceController : ControllerBase
             await using var stream = file.OpenReadStream();
             var groups = ExcelFileHelper.ReadSheetGroups(stream, file.FileName, sheetName, maxInAGroup);
 
-            var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup);
+            var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup, SaleFolderLabelFor(sheetName));
             var bytes = Encoding.UTF8.GetBytes(text);
             var downloadName = DownloadNameFor(sheetName);
 
@@ -195,15 +195,21 @@ public class UploadServiceController : ControllerBase
             {
                 using var sheetStream = new MemoryStream(workbookBytes, writable: false);
                 var groups = ExcelFileHelper.ReadSheetGroups(sheetStream, file.FileName, sheetName, maxInAGroup);
-                var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup);
+                var saleFolderLabel = SaleFolderLabelFor(sheetName);
+                var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup, saleFolderLabel);
                 var stored = await _store.SaveAsync(filename, Encoding.UTF8.GetBytes(text), ct);
 
                 // Same groups, written straight to JSON alongside the CSV - see
                 // AutofillStore.SaveGroupsAsync and DownloadGroups below. This is
                 // what the bookmarklet fetches live at click time, so it never has
                 // to parse CSV (or duplicate BusWankers.GenerateAutofillTextFromGroups'
-                // slot-padding logic) in its own JavaScript.
-                var groupsJson = JsonSerializer.SerializeToUtf8Bytes(ToGroupsDocument(groups), JsonOptions);
+                // slot-padding logic) in its own JavaScript. GroupData.Name carries
+                // the same sale-prefixed "Coach Group-A" as the CSV profile above -
+                // it's not otherwise used by the frontend (which prefixes group.label
+                // with its own SALE_INFO[...].folderLabel for display), but it's kept
+                // in step since ToGroupsDocument's own doc comment says this shape
+                // mirrors the CSV parser's.
+                var groupsJson = JsonSerializer.SerializeToUtf8Bytes(ToGroupsDocument(groups, saleFolderLabel), JsonOptions);
                 await _store.SaveGroupsAsync(filename, groupsJson, ct);
 
                 _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
@@ -458,6 +464,37 @@ public class UploadServiceController : ControllerBase
         return string.IsNullOrEmpty(slug) ? "autofill.csv" : $"{slug}_autofill.csv";
     }
 
+    /// <summary>
+    /// The short, sale-qualifying label baked into every group's profile name in
+    /// the generated autofill CSV (see BusWankers.GenerateAutofillTextFromGroups)
+    /// and the live groups JSON (see ToGroupsDocument) - "Coach", "General",
+    /// "Coach Resale", "General Resale" - so a group is never just "Group A" with
+    /// no way to tell which sale it belongs to. MUST be kept in step with the
+    /// frontend's own SALE_INFO[...].folderLabel (ReactApp/src/saleInfo.js),
+    /// which is the same string used for bookmark titles, folder names and
+    /// on-page group headings (2026-09-18) - note the sheet names here read
+    /// "Resale - Coach" (matching the workbook's own sheet name) while the
+    /// display label reads "Coach Resale" (matching the frontend's convention),
+    /// same as KnownSaleFilenames/DownloadNameFor above already do for
+    /// filenames. A sheet not in the table (a brand new sale tab) falls back to
+    /// its own trimmed name, same fallback shape as DownloadNameFor.
+    /// </summary>
+    private static readonly Dictionary<string, string> SaleFolderLabels =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Coach"] = "Coach",
+            ["General"] = "General",
+            ["Resale - Coach"] = "Coach Resale",
+            ["Resale - General"] = "General Resale",
+            ["Demo"] = "Demo",
+        };
+
+    private static string SaleFolderLabelFor(string sheetName)
+    {
+        var trimmed = sheetName.Trim();
+        return SaleFolderLabels.TryGetValue(trimmed, out var known) ? known : trimmed;
+    }
+
     private bool IsPasswordCorrect(string? supplied)
     {
         var expected = _config["UploadPassword"];
@@ -517,14 +554,15 @@ public class UploadServiceController : ControllerBase
 
     public sealed record MemberData(string RegistrationId, string PostCode);
 
-    private static GroupsDocument ToGroupsDocument(List<RegistrationGroup> groups)
+    private static GroupsDocument ToGroupsDocument(List<RegistrationGroup> groups, string? saleLabel = null)
     {
         var data = new List<GroupData>(groups.Count);
+        var namePrefix = string.IsNullOrWhiteSpace(saleLabel) ? string.Empty : $"{saleLabel} ";
         for (int i = 0; i < groups.Count; i++)
         {
             var g = groups[i];
             var members = g.Members.Select(m => new MemberData(m.RegistrationId, m.PostCode)).ToList();
-            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"Group-{g.GroupLabel}", members));
+            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"{namePrefix}Group-{g.GroupLabel}", members));
         }
         return new GroupsDocument(data);
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -191,8 +191,20 @@ namespace Autofills.Common
         /// per-group CSV file with a literal group-letter column. Used by the web
         /// upload pipeline; returns the text rather than writing to disk so the caller
         /// can stream it straight back as a download.
+        ///
+        /// saleLabel (2026-09-18): prefixes every profile's Name, e.g. "Coach Group-A"
+        /// rather than a bare "Group-A". Two different sales can each have their own
+        /// "Group A" (a coach-sale group and a general-sale group are unrelated people),
+        /// and AutoFill Options / Lightning Autofill has no concept of "sale" at all -
+        /// just one flat list of imported profile names - so importing both sales'
+        /// files into the same browser used to leave two identically-named profiles
+        /// with no way to tell them apart. Pass the caller's own short sale label (see
+        /// UploadServiceController.SaleFolderLabelFor, which mirrors the frontend's
+        /// SALE_INFO[...].folderLabel in ReactApp/src/saleInfo.js - the two must be
+        /// kept in step so a group reads the same everywhere it's named); null/empty
+        /// falls back to the old bare "Group-X" for callers that don't have one.
         /// </summary>
-        public static string GenerateAutofillTextFromGroups(IEnumerable<RegistrationGroup> groups, int maxInAGroup)
+        public static string GenerateAutofillTextFromGroups(IEnumerable<RegistrationGroup> groups, int maxInAGroup, string? saleLabel = null)
         {
             var groupList = groups.ToList();
             var sb = new StringBuilder();
@@ -200,8 +212,9 @@ namespace Autofills.Common
             sb.AppendLine("### AUTOFILL PROFILES ###,,,,,,");
             sb.AppendLine("Profile ID, Name, Site, Hotkey,,,");
 
+            var profilePrefix = string.IsNullOrWhiteSpace(saleLabel) ? string.Empty : $"{saleLabel} ";
             for (int i = 0; i < groupList.Count; i++)
-                sb.AppendLine($"c{i + 1},Group-{groupList[i].GroupLabel},,,,,");
+                sb.AppendLine($"c{i + 1},{profilePrefix}Group-{groupList[i].GroupLabel},,,,,");
 
             sb.AppendLine("### AUTOFILL RULES ###,,,,,,");
             sb.AppendLine("Rule ID,Type,Name,Value,Site,Mode,Profile");

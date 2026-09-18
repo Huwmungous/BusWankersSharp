@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CopyButton, copyText } from './GroupFillPanel';
+import { groupDisplayLabel } from '../bookmarklet';
 import { useAutofillGroups } from '../useAutofillGroups';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { DEFAULT_YEAR } from '../festival';
@@ -42,14 +43,17 @@ const CopyGroupButton = ({ group, nameLookup }) => {
 //
 // nameLookup: registration number -> "First Last" from the ingested roster
 // (see runningOrder.js) - purely a display convenience, blank when there's
-// no roster entry for a reg number.
-const GroupRow = ({ group, nameLookup }) => {
+// no roster entry for a reg number. saleFolderLabel (2026-09-18):
+// SALE_INFO[...].folderLabel - see groupDisplayLabel in ../bookmarklet.js
+// for why the heading needs it (so this tab's "Group A" for Coach reads
+// differently from General's own "Group A").
+const GroupRow = ({ group, nameLookup, saleFolderLabel }) => {
   const count = group.members.length;
   return (
     <li className="groups-group">
       <div className="groups-group-head">
         <div className="groups-group-title">
-          <strong>Group {group.label}</strong>
+          <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="groups-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
         </div>
         <CopyGroupButton group={group} nameLookup={nameLookup} />
@@ -148,7 +152,7 @@ const GroupsSection = ({
         {status === 'ready' && groups && groups.length > 0 && (
           <ul className="groups-list">
             {groups.map((g) => (
-              <GroupRow key={g.code} group={g} nameLookup={nameLookup} />
+              <GroupRow key={g.code} group={g} nameLookup={nameLookup} saleFolderLabel={info.folderLabel} />
             ))}
           </ul>
         )}

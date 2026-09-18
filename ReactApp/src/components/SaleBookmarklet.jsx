@@ -21,11 +21,11 @@ import './SaleBookmarklet.css';
 const SaleBookmarklet = ({ groups, year, saleFolderLabel, groupsUrl, onTried }) => {
   const ref = useRef(null);
   useEffect(() => {
-    if (ref.current) ref.current.setAttribute('href', saleBookmarkletHref(groups, groupsUrl));
-  }, [groups, groupsUrl]);
+    if (ref.current) ref.current.setAttribute('href', saleBookmarkletHref(groups, groupsUrl, saleFolderLabel));
+  }, [groups, groupsUrl, saleFolderLabel]);
 
   const tryOnTestForm = () => {
-    runSaleFillOnThisPage(groups, groupsUrl);
+    runSaleFillOnThisPage(groups, groupsUrl, saleFolderLabel);
     if (onTried) onTried();
   };
 

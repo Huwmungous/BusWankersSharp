@@ -72,11 +72,30 @@ function splitCsvLine(line) {
   return out.map((s) => s.trim());
 }
 
-// "Group-A" -> "A", "Group-1" -> "1"; anything else as-is.
+// "Group-A" -> "A", "Coach Group-A" -> "A", "Group-1" -> "1"; anything else
+// as-is. No "^" anchor: the backend now prefixes the profile Name with the
+// sale's own short label (see UploadServiceController.SaleFolderLabelFor /
+// GenerateAutofillTextFromGroups, 2026-09-18) so two sales that both happen
+// to have a "Group A" are never ambiguous once imported into AutoFill
+// Options/Lightning Autofill - but the RAW label recovered here still has
+// to be just the bare letter, because it's matched against the live groups
+// JSON's own (never-prefixed) label field - see liveMembersFor below and
+// ToGroupsDocument on the backend.
 const groupLabelFromProfileName = (name) => {
-  const m = /^Group-(.+)$/i.exec(name || '');
+  const m = /Group-(.+)$/i.exec(name || '');
   return m ? m[1] : (name || '');
 };
+
+// "Coach Group A" - the sale-qualified group name shown everywhere a group
+// is named to a person: bookmark titles, their on-page confirmation
+// banners, the whole-sale bookmarklet's tap-to-choose picker, and the
+// Documentation/Groups tabs' group headings (2026-09-18) - so two sales
+// that both happen to have a "Group A" (e.g. Coach and General) are never
+// ambiguous. saleFolderLabel is SALE_INFO[...].folderLabel (see
+// saleInfo.js) - "Coach", "General", "Coach Resale", "General Resale";
+// falls back to a bare "Group A" if one was never known.
+export const groupDisplayLabel = (saleFolderLabel, label) =>
+  saleFolderLabel ? `${saleFolderLabel} Group ${label}` : `Group ${label}`;
 
 // Parses an autofill file into groups:
 //   [{ code: 'c1', label: 'A', name: 'Group-A', members: [{ registrationId, postCode }] }]
@@ -135,10 +154,13 @@ export function parseAutofillCsv(text) {
 // The fill routine (embedded in every bookmarklet)
 // ---------------------------------------------------------------------------
 
-// Runs with three variables in scope: M (the embedded fallback - array of
+// Runs with four variables in scope: M (the embedded fallback - array of
 // [registrationId, postCode], in slot order), G (the raw group label, e.g.
-// "A"), and U (the absolute URL of this sale's live group data, or '' if
-// none was available when the bookmark was generated). Deliberately
+// "A"), U (the absolute URL of this sale's live group data, or '' if
+// none was available when the bookmark was generated), and S (the sale's
+// own short display label, e.g. "Coach" - see groupDisplayLabel above; ''
+// if none was known, in which case the confirmation banner below just says
+// "Group A" rather than "Coach Group A"). Deliberately
 // old-school JS (no arrow functions, template literals, let/const) so it
 // runs on any browser someone might be using on the day - fetch/Promise
 // themselves are assumed available (every browser released since 2016 has
@@ -218,7 +240,8 @@ export const FILL_SOURCE = `
       if (m[0] && slots[s][0]) filled++;
     }
     var missing = members.length > slots.length ? members.slice(slots.length) : [];
-    var msg = 'Bus Wankers - Group ' + G + ' (' + source + '): filled ' + filled + ' of ' + members.length + ' people.';
+    var groupName = (S ? S + ' Group ' : 'Group ') + G;
+    var msg = 'Bus Wankers - ' + groupName + ' (' + source + '): filled ' + filled + ' of ' + members.length + ' people.';
     if (missing.length) {
       msg += ' This page only has ' + slots.length + ' slots, so NOT entered: ' + missing.map(function (x) { return x[0]; }).join(', ') + '.';
     }
@@ -285,45 +308,53 @@ const membersToTuples = (members) =>
 // ---------------------------------------------------------------------------
 
 // The complete bookmarklet source for one group, as plain JavaScript. Wrapped
-// in its own function so M, G and U never leak onto the host page as
+// in its own function so M, G, U and S never leak onto the host page as
 // globals. groupsUrl is the sale's live group-data URL (see groupsUrlFor in
 // api/autofillApi.js) - optional so a sale with nothing ingested yet still
 // gets a working (fallback-only) bookmarklet; when given, it travels inside
 // the bookmark itself so FILL_SOURCE can try it live at click time (see the
-// comment on FILL_SOURCE above for the fallback behaviour).
-export function bookmarkletSource(group, groupsUrl = '') {
+// comment on FILL_SOURCE above for the fallback behaviour). saleFolderLabel
+// (2026-09-18) is SALE_INFO[...].folderLabel - baked in so the confirmation
+// banner reads "Coach Group A" rather than an ambiguous "Group A"; optional,
+// same as groupsUrl, for any caller that doesn't have one to hand.
+export function bookmarkletSource(group, groupsUrl = '', saleFolderLabel = '') {
   const M = JSON.stringify(membersToTuples(group.members));
   const G = JSON.stringify(group.label);
   const U = JSON.stringify(groupsUrl || '');
-  return `(function(){var M=${M},G=${G},U=${U};${FILL_SOURCE}})();`;
+  const S = JSON.stringify(saleFolderLabel || '');
+  return `(function(){var M=${M},G=${G},U=${U},S=${S};${FILL_SOURCE}})();`;
 }
 
 // The javascript: URL to put in the bookmark. Percent-encoded so nothing in
 // the source (quotes, #, spaces) can break the URL; browsers decode
 // javascript: URLs before running them.
-export function bookmarkletHref(group, groupsUrl = '') {
-  return `javascript:${encodeURIComponent(bookmarkletSource(group, groupsUrl))}`;
+export function bookmarkletHref(group, groupsUrl = '', saleFolderLabel = '') {
+  return `javascript:${encodeURIComponent(bookmarkletSource(group, groupsUrl, saleFolderLabel))}`;
 }
 
-// A sensible bookmark name: "Glasto 2027 - Fill Group A". Deliberately no
-// longer carries a data version/vintage - see the FILL_SOURCE comment above
-// for why: the bookmark itself checks live at click time and says in its own
-// confirmation banner whether it used live or fallback data, which is a more
-// honest answer than a name baked in once at generation time could ever be.
-export const bookmarkletTitle = (group, year) =>
-  `Glasto ${year} - Fill Group ${group.label}`;
+// A sensible bookmark name: "Glasto 2027 - Fill Coach Group A" (see
+// groupDisplayLabel above - saleFolderLabel is SALE_INFO[...].folderLabel,
+// 2026-09-18, so two sales that both have a "Group A" are never ambiguous in
+// the bookmarks bar either). Deliberately no longer carries a data
+// version/vintage - see the FILL_SOURCE comment above for why: the bookmark
+// itself checks live at click time and says in its own confirmation banner
+// whether it used live or fallback data, which is a more honest answer than
+// a name baked in once at generation time could ever be.
+export const bookmarkletTitle = (group, year, saleFolderLabel) =>
+  `Glasto ${year} - Fill ${groupDisplayLabel(saleFolderLabel, group.label)}`;
 
 // Runs the identical fill routine against THIS page (the Test Form tab), so
 // "Try it on the Test Form" exercises exactly what the bookmark will do -
 // including the live fetch, since the Test Form is same-origin with this app
 // and so is a genuine rehearsal of that path, not just the fallback.
-export function runFillOnThisPage(group, groupsUrl = '') {
+export function runFillOnThisPage(group, groupsUrl = '', saleFolderLabel = '') {
   const M = membersToTuples(group.members);
   const G = group.label;
   const U = groupsUrl || '';
+  const S = saleFolderLabel || '';
   // eslint-disable-next-line no-new-func
-  const fn = new Function('M', 'G', 'U', FILL_SOURCE);
-  fn(M, G, U);
+  const fn = new Function('M', 'G', 'U', 'S', FILL_SOURCE);
+  fn(M, G, U, S);
 }
 
 // ---------------------------------------------------------------------------
@@ -399,7 +430,8 @@ export const SALE_FILL_SOURCE = `
       if (m[0] && slots[s][0]) filled++;
     }
     var missing = members.length > slots.length ? members.slice(slots.length) : [];
-    var msg = 'Bus Wankers - Group ' + label + ' (' + source + '): filled ' + filled + ' of ' + members.length + ' people.';
+    var groupName = (S ? S + ' Group ' : 'Group ') + label;
+    var msg = 'Bus Wankers - ' + groupName + ' (' + source + '): filled ' + filled + ' of ' + members.length + ' people.';
     if (missing.length) {
       msg += ' This page only has ' + slots.length + ' slots, so NOT entered: ' + missing.map(function (x) { return x[0]; }).join(', ') + '.';
     }
@@ -433,7 +465,7 @@ export const SALE_FILL_SOURCE = `
       (function (g) {
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = 'Group ' + g.label + ' (' + g.members.length + (g.members.length === 1 ? ' person' : ' people') + ')';
+        btn.textContent = (S ? S + ' Group ' : 'Group ') + g.label + ' (' + g.members.length + (g.members.length === 1 ? ' person' : ' people') + ')';
         btn.setAttribute('style', 'display:block;width:100%;padding:11px 14px;border:1px solid #ccc;border-radius:7px;background:#f7f9fb;cursor:pointer;font:inherit;text-align:left;');
         btn.onclick = function () {
           removePicker();
@@ -508,17 +540,25 @@ export const SALE_FILL_SOURCE = `
 `;
 
 // groups: the sale's full group list (parseAutofillCsv shape). Wrapped in
-// its own function so ALLM and U never leak onto the host page as globals -
-// same pattern as bookmarkletSource above, just carrying every group's
-// fallback data instead of one.
-export function saleBookmarkletSource(groups, groupsUrl = '') {
+// its own function so ALLM, U and S never leak onto the host page as
+// globals - same pattern as bookmarkletSource above, just carrying every
+// group's fallback data instead of one. saleFolderLabel (2026-09-18) is
+// SALE_INFO[...].folderLabel - baked in so both the picker's buttons and
+// the fill confirmation banner read "Coach Group A" rather than an
+// ambiguous "Group A" (this one bookmark only ever lists ITS OWN sale's
+// groups, so the picker itself was never ambiguous - but someone who's
+// installed a whole-sale bookmark for more than one sale, e.g. Coach and
+// General, would otherwise get an identical-looking "Group A" confirmation
+// banner from either one).
+export function saleBookmarkletSource(groups, groupsUrl = '', saleFolderLabel = '') {
   const ALLM = JSON.stringify(groups.map((g) => ({ label: g.label, members: membersToTuples(g.members) })));
   const U = JSON.stringify(groupsUrl || '');
-  return `(function(){var ALLM=${ALLM},U=${U};${SALE_FILL_SOURCE}})();`;
+  const S = JSON.stringify(saleFolderLabel || '');
+  return `(function(){var ALLM=${ALLM},U=${U},S=${S};${SALE_FILL_SOURCE}})();`;
 }
 
-export function saleBookmarkletHref(groups, groupsUrl = '') {
-  return `javascript:${encodeURIComponent(saleBookmarkletSource(groups, groupsUrl))}`;
+export function saleBookmarkletHref(groups, groupsUrl = '', saleFolderLabel = '') {
+  return `javascript:${encodeURIComponent(saleBookmarkletSource(groups, groupsUrl, saleFolderLabel))}`;
 }
 
 // "Glasto 2027 - Fill My Group (Coach)" - one bookmark, works for anyone on
@@ -531,12 +571,13 @@ export const saleBookmarkletTitle = (saleFolderLabel, year) =>
 // Runs the identical routine against THIS page (the Test Form tab) - same
 // rationale as runFillOnThisPage above: same source, same live-fetch path,
 // genuine rehearsal of the picker included.
-export function runSaleFillOnThisPage(groups, groupsUrl = '') {
+export function runSaleFillOnThisPage(groups, groupsUrl = '', saleFolderLabel = '') {
   const ALLM = groups.map((g) => ({ label: g.label, members: membersToTuples(g.members) }));
   const U = groupsUrl || '';
+  const S = saleFolderLabel || '';
   // eslint-disable-next-line no-new-func
-  const fn = new Function('ALLM', 'U', SALE_FILL_SOURCE);
-  fn(ALLM, U);
+  const fn = new Function('ALLM', 'U', 'S', SALE_FILL_SOURCE);
+  fn(ALLM, U, S);
 }
 
 // ---------------------------------------------------------------------------
@@ -561,10 +602,12 @@ const escapeHtml = (s) => String(s)
 // The bookmarklet hrefs are percent-encoded (see bookmarkletHref), so they
 // contain no quotes or ampersands and are safe inside the HREF attribute.
 // groupsUrl flows through to every bookmarklet's own href, so each bookmark
-// in the folder can check live for itself.
-export function bookmarkFolderHtml(groups, folderName, year, groupsUrl = '') {
+// in the folder can check live for itself. saleFolderLabel (2026-09-18)
+// flows through the same way, so every bookmark's title and confirmation
+// banner reads "Coach Group A" rather than an ambiguous "Group A".
+export function bookmarkFolderHtml(groups, folderName, year, groupsUrl = '', saleFolderLabel = '') {
   const items = groups
-    .map((g) => `            <DT><A HREF="${bookmarkletHref(g, groupsUrl)}">${escapeHtml(bookmarkletTitle(g, year))}</A>`)
+    .map((g) => `            <DT><A HREF="${bookmarkletHref(g, groupsUrl, saleFolderLabel)}">${escapeHtml(bookmarkletTitle(g, year, saleFolderLabel))}</A>`)
     .join('\n');
   const stamp = Math.floor(Date.now() / 1000);
   return `<!DOCTYPE NETSCAPE-Bookmark-file-1>
