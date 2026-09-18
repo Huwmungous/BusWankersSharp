@@ -179,7 +179,25 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
    order) as of the last ingest. `nnnn` is the festival year, read from that tab's
    name, and is what every other "2027"-style mention on the page uses
-   (`src/festival.js` holds the fallback for a store with no roster yet).
+   (`src/festival.js` holds the fallback for a store with no roster yet). Since
+   2026-09-18 the table also carries one column per sale (`Coach`, `General`,
+   `Coach Resale`, `General Resale`, `Demo` - the same order `Object.entries
+   (SALE_INFO)` uses everywhere else) showing which group, if any, that person
+   is in for that sale, or a dash once its file has been ingested with nobody
+   in it under that reg number. This needed all FIVE sales' groups loaded at
+   once - not just whichever one is currently selected on Documentation/Groups
+   - so `RunningOrderSection` now takes the same `storedFiles`/`storeStatus`/
+   `storeError` props those two already get from `BusWankersPage`, and calls
+   `useAutofillGroups` once per `SALE_INFO` entry (a fixed, known set of keys,
+   so a fixed number of hook calls, same rules as any other hook). Each sale's
+   registration-number -> group-letter lookup is built by the new
+   `buildGroupLookup`/`groupLabelForRegistration` in `src/runningOrder.js`
+   (alongside the existing `buildNameLookup`/`nameForRegistration`), from the
+   exact same parsed-CSV shape those already work with, so there's no second,
+   diverging way of reading an autofill file's groups. The cell shows the RAW
+   group letter (not sale-qualified) since the column header already says
+   which sale.
+
 4. **Test Form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
    6 people per group, matching `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so

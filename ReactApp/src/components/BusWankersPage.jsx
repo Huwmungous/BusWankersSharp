@@ -118,8 +118,12 @@ const BusWankersPage = () => {
           runningOrder={runningOrder}
           status={runningOrderStatus}
           error={runningOrderError}
+          storedFiles={storedFiles}
+          storeStatus={storeStatus}
+          storeError={storeError}
         />
       </div>
+
       <div {...tabProps('test-form')}>
         <TestSection year={year} />
       </div>
