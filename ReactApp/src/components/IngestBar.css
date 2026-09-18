@@ -106,6 +106,27 @@
   color: #777;
 }
 
+/* Lead Booker warnings (2026-09-18): a sheet that ingested fine but has
+   something worth checking - a group with nobody marked red, more than one
+   person marked, or a .xls upload where colour can't be read at all. Amber,
+   distinct from both a clean "ok" and an actual "failed". */
+.ingest-bar .ingest-result-warn {
+  color: #8a6100;
+}
+
+.ingest-bar .ingest-result-warnings {
+  margin: 4px 0 2px;
+  padding-left: 18px;
+  font-size: 0.95em;
+  color: #8a6100;
+}
+
+.ingest-bar .ingest-result-warnings li {
+  margin: 2px 0;
+  list-style: disc;
+}
+
+
 .ingest-bar .ingest-results code {
   background-color: #eee;
   padding: 1px 5px;

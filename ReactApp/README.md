@@ -181,6 +181,32 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    the generic icon rather than add either.
 
 
+   **Lead Booker (2026-09-18):** each group has one "Lead Booker" - whoever's
+   account actually does the booking - and the spreadsheet marks that person
+   by colouring their First and/or Last name cell red (`Common/
+   SheetRegistrationReader.cs`'s `ReadGroups`/`BuildGroup`). Nothing about
+   the CSV/JSON format or the frontend changed for this: `GroupFillPanel.jsx`
+   and `GroupsSection.jsx` already labelled slot 0 "Lead Booker" and the rest
+   "#1", "#2"... (and the generated autofill files already filled the site's
+   first registration slot from slot 0) - so the only real gap was that
+   "slot 0" was previously just "whoever's listed first in the spreadsheet",
+   with no link to a specific person. Now, during ingest, whoever's marked
+   red is moved to position 0 within their group and everyone else keeps
+   their existing relative order after that. Reading the colour needs the
+   OpenXML SDK directly (`ExcelFileHelper.DetectLeadBookerRows`) since
+   ExcelDataReader (used for everything else) only ever reads cell values,
+   never formatting - and only works for `.xlsx` uploads, since the old
+   binary `.xls` format isn't read that way at all.
+
+   The upload never fails because of this - Hugh's call (2026-09-18): a
+   group with nobody marked red keeps today's old fallback (first-listed
+   becomes Lead Booker) and a group with more than one red name uses
+   whoever's first in the spreadsheet - but either case, plus a `.xls`
+   upload where colour can't be read at all, is reported as a warning
+   against that sheet in the Update Files results (`IngestResult.Warnings`,
+   shown in amber by `IngestBar.jsx`) so it's easy to notice and fix the
+   spreadsheet before sale morning.
+
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
    order) as of the last ingest. `nnnn` is the festival year, read from that tab's
