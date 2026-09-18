@@ -25,6 +25,14 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
    the other tabs refresh.
+
+   A `Scratchpad` tab (2026-09-18) is never treated as a sale or the roster,
+   whatever it contains - it's Hugh's own notes tab while he's building the
+   workbook, not data to ingest. It joins `Starting Lineup` and `URL` in
+   `Common/ExcelFileHelper.cs`'s `NonSaleSheetNames`, matched trimmed and
+   case-insensitively, so it's skipped even if it happens to have a
+   sale-shaped header row (see `ExcelFileHelperTests.cs`).
+
 2. **Documentation** (`DocumentationSection`) - the landing tab. Pick a sale
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
