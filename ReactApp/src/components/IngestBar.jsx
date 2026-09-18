@@ -88,8 +88,14 @@ const IngestBar = ({ onIngested }) => {
     }
   };
 
+  // Lead Booker warnings (2026-09-18, see SheetRegistrationReader.ReadGroups
+  // on the backend): non-fatal issues on an otherwise-successful sheet - a
+  // group with nobody marked red, more than one person marked, or (for a
+  // .xls upload) colour couldn't be read at all. Shown in amber, distinct
+  // from both a clean success and an actual failure, so they're noticeable
+  // without looking like something broke.
   const resultClass = (r) =>
-    r.status === 'ok' ? 'ingest-result-ok'
+    r.status === 'ok' ? (r.warnings && r.warnings.length > 0 ? 'ingest-result-warn' : 'ingest-result-ok')
       : r.status === 'empty' || r.status === 'skipped' ? 'ingest-result-empty'
         : 'ingest-result-fail';
 
@@ -103,6 +109,7 @@ const IngestBar = ({ onIngested }) => {
     if (r.status === 'empty') return r.cleared ? ' - empty sheet; the existing file has been removed' : ' - empty sheet; nothing was stored to clear';
     return ` - ${r.error}`;
   };
+
 
   return (
     <section className="ingest-bar" id="ingest-bar" aria-label="Upload a spreadsheet to update the autofill files">
@@ -147,8 +154,16 @@ const IngestBar = ({ onIngested }) => {
               <li key={r.isRoster ? `roster:${r.sheet}` : r.sheet} className={resultClass(r)}>
                 <strong>{r.sheet}</strong> → <code>{r.filename}</code>
                 {resultDetail(r)}
+                {Array.isArray(r.warnings) && r.warnings.length > 0 && (
+                  <ul className="ingest-result-warnings">
+                    {r.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
+
           </ul>
         )}
       </form>

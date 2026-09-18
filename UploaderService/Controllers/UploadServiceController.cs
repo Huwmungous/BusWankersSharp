@@ -113,7 +113,7 @@ public class UploadServiceController : ControllerBase
         try
         {
             await using var stream = file.OpenReadStream();
-            var groups = ExcelFileHelper.ReadSheetGroups(stream, file.FileName, sheetName, maxInAGroup);
+            var (groups, warnings) = ExcelFileHelper.ReadSheetGroups(stream, file.FileName, sheetName, maxInAGroup);
 
             var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup, SaleFolderLabelFor(sheetName));
             var bytes = Encoding.UTF8.GetBytes(text);
@@ -121,6 +121,12 @@ public class UploadServiceController : ControllerBase
 
             Response.Headers["X-Source-Sheet"] = sheetName.Trim();
             Response.Headers["X-Group-Count"] = groups.Count.ToString();
+            // Lead Booker warnings (2026-09-18) - this route isn't used by the
+            // page any more (see the class doc comment), so there's no UI to
+            // show them in; a count header is enough for anyone still using
+            // /generate directly to notice something's worth checking.
+            Response.Headers["X-Lead-Booker-Warning-Count"] = warnings.Count.ToString();
+
 
             return File(bytes, "text/csv", downloadName);
         }
@@ -194,7 +200,8 @@ public class UploadServiceController : ControllerBase
             try
             {
                 using var sheetStream = new MemoryStream(workbookBytes, writable: false);
-                var groups = ExcelFileHelper.ReadSheetGroups(sheetStream, file.FileName, sheetName, maxInAGroup);
+                var (groups, warnings) = ExcelFileHelper.ReadSheetGroups(sheetStream, file.FileName, sheetName, maxInAGroup);
+
                 var saleFolderLabel = SaleFolderLabelFor(sheetName);
                 var text = BusWankers.GenerateAutofillTextFromGroups(groups, maxInAGroup, saleFolderLabel);
                 var stored = await _store.SaveAsync(filename, Encoding.UTF8.GetBytes(text), ct);
@@ -214,8 +221,7 @@ public class UploadServiceController : ControllerBase
 
                 _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
                     sheetName, stored.Filename, groups.Count, stored.Size, file.FileName);
-
-                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Ok, groups.Count, null));
+                results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Ok, groups.Count, null, Warnings: warnings));
             }
             catch (EmptySheetException ex)
             {
@@ -524,12 +530,17 @@ public class UploadServiceController : ControllerBase
     /// Per-sheet outcome of POST /ingest. <c>Ok</c> is kept alongside <c>Status</c>
     /// so the response stays backward compatible with the first frontend build.
     /// <c>Cleared</c> is true for an Empty sheet whose previously stored file was
-    /// removed by this ingest.
+    /// removed by this ingest. <c>Warnings</c> (2026-09-18): non-fatal Lead
+    /// Booker issues worth surfacing (see SheetRegistrationReader.ReadGroups) -
+    /// always present (an empty list, never null) so the frontend doesn't have
+    /// to null-check before reading its length.
     /// </summary>
-    public sealed record IngestResult(string Sheet, string Filename, IngestStatus Status, int Groups, string? Error, bool Cleared = false)
+    public sealed record IngestResult(string Sheet, string Filename, IngestStatus Status, int Groups, string? Error, bool Cleared = false, List<string>? Warnings = null)
     {
         public bool Ok => Status == IngestStatus.Ok;
+        public List<string> Warnings { get; init; } = Warnings ?? new List<string>();
     }
+
 
     /// <summary>Roster outcome of POST /ingest, alongside the per-sale results.</summary>
     public sealed record RunningOrderResult(IngestStatus Status, int? Year, string? Sheet, int People, bool Cleared, string? Error);

@@ -42,7 +42,34 @@ namespace Autofills.Common
     /// </summary>
     public static class SheetRegistrationReader
     {
-        public static List<RegistrationGroup> ReadGroups(DataTable sheet, int maxInAGroup)
+        /// <summary>
+        /// Same as ReadGroups(sheet, maxInAGroup) below, plus the Lead Booker
+        /// concept (2026-09-18): each group has one person marked as its
+        /// "Lead Booker" by colouring their First/Last name cell red on the
+        /// spreadsheet (Bus Wankers' own convention - the actual See Tickets
+        /// form just calls that slot "Your Details"). Frontend and the
+        /// generated CSV/JSON already treat whoever is FIRST in a group's
+        /// Members list as the Lead Booker (see GroupFillPanel.jsx/
+        /// GroupsSection.jsx's "Lead Booker" / "#1" labelling and
+        /// BusWankers.GenerateAutofillTextFromGroups' slot-0 handling) - so
+        /// the only thing this needs to do is put the red-marked person
+        /// first within their group; nothing downstream changes.
+        ///
+        /// leadBookerRows: DataTable row indices (matching the loop variable
+        /// `r` below - i.e. the same indexing as sheet.Rows) that carry a red
+        /// First/Last cell, from ExcelFileHelper.DetectLeadBookerRows. Pass
+        /// null when colour detection wasn't attempted at all (a .xls
+        /// upload - ExcelDataReader has no styling API and there's no OpenXML
+        /// equivalent for the old binary format), which is reported as ONE
+        /// warning for the whole sheet rather than one per group. Pass a
+        /// (possibly empty) set when detection DID run - each group with no
+        /// red person, or more than one, gets its own warning; either way the
+        /// upload still succeeds (Hugh, 2026-09-18: keep today's fallback
+        /// behaviour - first-listed becomes Lead Booker - and warn, rather
+        /// than blocking the ingest).
+        /// </summary>
+        public static (List<RegistrationGroup> Groups, List<string> Warnings) ReadGroups(
+            DataTable sheet, int maxInAGroup, IReadOnlySet<int>? leadBookerRows = null)
         {
             var (headerRow, groupCol, regCol, postcodeCol) = FindHeader(sheet);
 
@@ -50,7 +77,12 @@ namespace Autofills.Common
                 throw new InvalidOperationException(
                     "Could not find a header row containing 'Reg Number' and 'Postcode' columns on this sheet.");
 
-            var ordered = new List<(string? GroupLabel, Registrant Member)>();
+            var warnings = new List<string>();
+            bool detectionRan = leadBookerRows != null;
+            if (!detectionRan)
+                warnings.Add("Lead Booker colours can only be read from .xlsx files, so groups on this sheet are ordered exactly as listed in the spreadsheet.");
+
+            var ordered = new List<(string? GroupLabel, Registrant Member, bool IsLead)>();
 
             for (int r = headerRow + 1; r < sheet.Rows.Count; r++)
             {
@@ -63,7 +95,8 @@ namespace Autofills.Common
                 if (string.IsNullOrEmpty(groupVal))
                     groupVal = null;
 
-                ordered.Add((groupVal, new Registrant(regVal, postVal)));
+                bool isLead = leadBookerRows != null && leadBookerRows.Contains(r);
+                ordered.Add((groupVal, new Registrant(regVal, postVal), isLead));
             }
 
             if (ordered.Count == 0)
@@ -75,11 +108,11 @@ namespace Autofills.Common
 
             if (anyLabelled)
             {
-                var byLabel = new Dictionary<string, List<Registrant>>();
+                var byLabel = new Dictionary<string, List<(Registrant Member, bool IsLead)>>();
                 var labelOrder = new List<string>();
                 int syntheticIndex = 0;
 
-                foreach (var (label, member) in ordered)
+                foreach (var (label, member, isLead) in ordered)
                 {
                     // An unlabelled row mixed in with labelled ones gets its own
                     // singleton group rather than being folded into whichever
@@ -87,15 +120,15 @@ namespace Autofills.Common
                     var key = label ?? $"(unlabelled {++syntheticIndex})";
                     if (!byLabel.TryGetValue(key, out var list))
                     {
-                        list = new List<Registrant>();
+                        list = new List<(Registrant, bool)>();
                         byLabel[key] = list;
                         labelOrder.Add(key);
                     }
-                    list.Add(member);
+                    list.Add((member, isLead));
                 }
 
                 foreach (var key in labelOrder)
-                    groups.Add(new RegistrationGroup(key, byLabel[key]));
+                    groups.Add(BuildGroup(key, byLabel[key], detectionRan, warnings));
             }
             else
             {
@@ -105,8 +138,8 @@ namespace Autofills.Common
                 for (int i = 0; i < ordered.Count; i += maxInAGroup)
                 {
                     groupNum++;
-                    var chunk = ordered.Skip(i).Take(maxInAGroup).Select(o => o.Member).ToList();
-                    groups.Add(new RegistrationGroup(groupNum.ToString(CultureInfo.InvariantCulture), chunk));
+                    var chunk = ordered.Skip(i).Take(maxInAGroup).Select(o => (o.Member, o.IsLead)).ToList();
+                    groups.Add(BuildGroup(groupNum.ToString(CultureInfo.InvariantCulture), chunk, detectionRan, warnings));
                 }
             }
 
@@ -115,8 +148,54 @@ namespace Autofills.Common
                 throw new InvalidOperationException(
                     $"Group '{tooBig.GroupLabel}' has {tooBig.Members.Count} people, more than the {maxInAGroup}-per-group limit for this sale. Check the spreadsheet.");
 
-            return groups;
+            return (groups, warnings);
         }
+
+        /// <summary>
+        /// Builds one group from its members in spreadsheet order, moving
+        /// whoever is marked Lead Booker (a red First/Last cell) to position
+        /// 0 - everyone else keeps their existing relative order after that.
+        /// detectionRan false means colour detection wasn't attempted for
+        /// this whole sheet (already warned about once by the caller), so no
+        /// per-group warning is added and the order is left exactly as
+        /// listed. When it's true: zero red people in the group keeps
+        /// today's fallback (first-listed stays first) but warns; more than
+        /// one red person uses the first one found (in spreadsheet order)
+        /// and warns about the rest.
+        /// </summary>
+        private static RegistrationGroup BuildGroup(
+            string label, List<(Registrant Member, bool IsLead)> members, bool detectionRan, List<string> warnings)
+        {
+            if (!detectionRan || members.Count == 0)
+                return new RegistrationGroup(label, members.Select(m => m.Member).ToList());
+
+            var leadIndexes = new List<int>();
+            for (int i = 0; i < members.Count; i++)
+                if (members[i].IsLead)
+                    leadIndexes.Add(i);
+
+            if (leadIndexes.Count == 0)
+            {
+                warnings.Add($"Group {label}: nobody's name was marked red as Lead Booker - using {members[0].Member.RegistrationId} (first listed on the sheet) instead.");
+                return new RegistrationGroup(label, members.Select(m => m.Member).ToList());
+            }
+
+            if (leadIndexes.Count > 1)
+            {
+                var chosen = members[leadIndexes[0]].Member.RegistrationId;
+                var extras = string.Join(", ", leadIndexes.Skip(1).Select(i => members[i].Member.RegistrationId));
+                warnings.Add($"Group {label}: more than one person was marked red ({chosen}, {extras}) - using {chosen} (the first one found) as Lead Booker.");
+            }
+
+            var leadIndex = leadIndexes[0];
+            var reordered = new List<Registrant> { members[leadIndex].Member };
+            for (int i = 0; i < members.Count; i++)
+                if (i != leadIndex)
+                    reordered.Add(members[i].Member);
+
+            return new RegistrationGroup(label, reordered);
+        }
+
 
         /// <summary>
         /// True when row 0 carries the sale-sheet heading shape: "Group", "Reg
