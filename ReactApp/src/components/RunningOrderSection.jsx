@@ -16,15 +16,18 @@ const formatWhen = (iso) => {
 const SALE_KEYS = Object.keys(SALE_INFO).filter((key) => key !== 'Demo');
 // The "Glasto nnnn Running Order" tab: everyone on the workbook's roster
 // sheet (the "Glasto nnnn" tab, named for the festival year) as of the last
-// ingest, in surname order, with their reg number, plus one column per real
-// sale (2026-09-18; Demo excluded) showing which group - if any - that
+// ingest, in surname order, with their reg number and postcode (when the
+// roster sheet has one - 2026-09-18), plus one column per real sale
+// (2026-09-18; Demo excluded) showing which group - if any - that
 // person is in for that sale. Rendered as a native <details> (open by
 // default now it has a tab of its own) so it can still be collapsed and
 // needs no state of its own.
 //
 // runningOrder: { year, sheet, generatedAt, entries: [{ regNumber, firstName,
-// lastName, name }] } from GET /running-order, or null when no roster has been
-// ingested yet. `year` is passed separately because the page falls back to a
+// lastName, name, postCode }] } from GET /running-order, or null when no
+// roster has been ingested yet. postCode is '' when the roster sheet has no
+// 'Postcode' column (2026-09-18, added alongside the per-sale columns).
+// `year` is passed separately because the page falls back to a
 // default when there's no roster, and the heading should still read sensibly.
 //
 // storedFiles/storeStatus/storeError: the same shared file-store state
@@ -118,6 +121,7 @@ const RunningOrderSection = ({
                   <th className="running-order-pos">#</th>
                   <th>Reg Number</th>
                   <th>Name</th>
+                  <th>Postcode</th>
                   {SALE_KEYS.map((key) => (
                     <th key={key} className="running-order-group-col" title={SALE_INFO[key].label}>
                       {SALE_INFO[key].folderLabel}
@@ -131,6 +135,9 @@ const RunningOrderSection = ({
                     <td className="running-order-pos">{i + 1}</td>
                     <td className="running-order-reg">{e.regNumber}</td>
                     <td>{e.name || [e.firstName, e.lastName].filter(Boolean).join(' ')}</td>
+                    <td className="running-order-postcode">
+                      {e.postCode || <span className="running-order-group-empty">—</span>}
+                    </td>
                     {SALE_KEYS.map((key) => {
                       const label = groupLabelForRegistration(lookupsBySale[key], e.regNumber);
                       return (

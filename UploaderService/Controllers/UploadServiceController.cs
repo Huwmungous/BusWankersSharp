@@ -330,7 +330,7 @@ public class UploadServiceController : ControllerBase
                 roster.Year,
                 roster.SheetName,
                 DateTimeOffset.UtcNow,
-                roster.Entries.Select(e => new RunningOrderEntry(e.RegistrationId, e.FirstName, e.LastName, e.DisplayName)).ToList());
+                roster.Entries.Select(e => new RunningOrderEntry(e.RegistrationId, e.FirstName, e.LastName, e.DisplayName, e.PostCode)).ToList());
 
             var json = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
             await _store.SaveRunningOrderAsync(json, ct);
@@ -548,7 +548,7 @@ public class UploadServiceController : ControllerBase
     /// <summary>What running_order.json holds - also the body of GET /running-order.</summary>
     public sealed record RunningOrderDocument(int Year, string Sheet, DateTimeOffset GeneratedAt, List<RunningOrderEntry> Entries);
 
-    public sealed record RunningOrderEntry(string RegNumber, string FirstName, string LastName, string Name);
+    public sealed record RunningOrderEntry(string RegNumber, string FirstName, string LastName, string Name, string PostCode = "");
 
     /// <summary>
     /// What a sale's groups sidecar holds - also the body of
