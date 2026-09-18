@@ -29,8 +29,8 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
    browser in localStorage, default Bookmark):
-   - **Bookmark** - the primary route is a single draggable **Glasto nnnn -
-     Fill My Group (Sale)** bookmarklet (`SaleBookmarklet`) that covers every
+   - **Bookmark** - the primary route is a single draggable **\<Sale\> Filler**
+     bookmarklet (`SaleBookmarklet`, e.g. "Coach Filler", "General Filler") that covers every
      group: drag it once, and on click it shows a tap-to-choose picker for
      the person's own group before filling (see "One bookmark for the WHOLE
      sale" below). Behind an "advanced options" `<details>`, the older routes
@@ -145,19 +145,35 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    profiles once imported into AutoFill Options/Lightning Autofill, which has
    no idea of "sale" itself and previously saw two identically-named
    "Group-A" profiles the moment someone imported both sales' files.
-   \`groupLabelFromProfileName\` (the frontend's own CSV parser) had its regex
-   loosened from \`^Group-(.+)$\` to \`Group-(.+)$\` so it still recovers the bare
+   `groupLabelFromProfileName` (the frontend's own CSV parser) had its regex
+   loosened from `^Group-(.+)$` to `Group-(.+)$` so it still recovers the bare
    letter from a sale-prefixed name.
 
    **Whole-sale bookmarklet always confirms the group (2026-09-18):** the
-   tap-to-choose picker in \`SALE_FILL_SOURCE\`/\`withGroups\` used to skip
-   straight to \`fillWithData\` when a sale only had one group, so a
+   tap-to-choose picker in `SALE_FILL_SOURCE`/`withGroups` used to skip
+   straight to `fillWithData` when a sale only had one group, so a
    single-group sale filled the page with no confirmation while a
-   multi-group sale always showed the picker first. \`withGroups\` now always
-   calls \`showPicker\`, even for a single group, so the behaviour - and the
+   multi-group sale always showed the picker first. `withGroups` now always
+   calls `showPicker`, even for a single group, so the behaviour - and the
    chance to bail out via Cancel - is identical no matter how many groups
    the sale has.
 
+   **Short "<Sale> Filler" bookmark name, plus a proper app icon (2026-09-18):**
+   the one bookmark people actually drag (`saleBookmarkletTitle`) used to be
+   titled `Glasto 2027 - Fill My Group (Coach)`; it's now just `Coach Filler` /
+   `General Filler` / `Coach Resale Filler` / `General Resale Filler` - short
+   enough to read at a glance in a crowded bookmarks bar, and still
+   sale-specific via `saleFolderLabel` so it can never be confused with the
+   other sale's bookmark. The app also now ships a real favicon
+   (`public/favicon.svg`, a bus-and-ticket mark referenced from
+   `public/index.html`/`public/manifest.json`) where before there was none -
+   `favicon.ico`/`logo192.png`/`logo512.png` were referenced by the
+   Create-React-App template but never actually existed. Browsers generally
+   show the favicon of the page you dragged a link FROM for that bookmark
+   (not the bookmarklet's own, since a `javascript:` URL has no site of its
+   own to fetch one from), so this icon should now show up next to the
+   bookmark for anyone who (re-)creates it from this app's own pages -
+   exactly how bookmarks are always installed here.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
    everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname

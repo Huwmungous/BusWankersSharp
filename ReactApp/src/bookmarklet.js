@@ -560,12 +560,17 @@ export function saleBookmarkletHref(groups, groupsUrl = '', saleFolderLabel = ''
   return `javascript:${encodeURIComponent(saleBookmarkletSource(groups, groupsUrl, saleFolderLabel))}`;
 }
 
-// "Glasto 2027 - Fill My Group (Coach)" - one bookmark, works for anyone on
-// that sale; which group it fills is picked on click, not baked into the
-// title (there's only one of these per sale, so there's nothing to
-// disambiguate the way per-group titles need to).
+// "Coach Filler" / "General Filler" / "Coach Resale Filler" (2026-09-18) -
+// short and sale-specific rather than a long "Glasto 2027 - Fill My Group
+// (Coach)" title, since this is the ONE bookmark most people will ever
+// see in their bar and it needs to read at a glance. saleFolderLabel is
+// always SALE_INFO[...].folderLabel (see groupDisplayLabel above), so two
+// sales' bookmarks are never confusable with each other either. Works for
+// everyone on that sale; which group it fills is picked on click, not
+// baked into the title (there's only one of these per sale, so there's
+// nothing to disambiguate the way per-group titles need to).
 export const saleBookmarkletTitle = (saleFolderLabel, year) =>
-  `Glasto ${year} - Fill My Group (${saleFolderLabel})`;
+  `${saleFolderLabel} Filler`;
 
 // Runs the identical routine against THIS page (the Test Form tab) - same
 // rationale as runFillOnThisPage above: same source, same live-fetch path,
