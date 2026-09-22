@@ -39,8 +39,16 @@ location /buswankers-api/ {
 # "/buswankers/" and "/buswankers/index.html" and adds the no-cache headers;
 # every other asset still goes through the prefix block untouched. Same
 # rule deploy-breaktackle-frontend.sh applies to the main RozeBowl app.
+#
+# root + try_files, NOT `alias .../index.html`: for the bare "/buswankers/"
+# request the URI ends in "/", so nginx hands it to the index module, which
+# appended "index.html" to the aliased FILE path and failed with
+# ".../index.htmlindex.html is not a directory" -> HTTP 500 on the landing
+# page (2026-09-22). try_files with an explicit file serves it directly and
+# never reaches the index module; the MIME type comes from the .html name.
 location ~ ^/buswankers/(index\.html)?$ {
-    alias /srv/BusWankersSharp/www/buswankers/index.html;
+    root /srv/BusWankersSharp/www;
+    try_files /buswankers/index.html =404;
     add_header Cache-Control "no-cache, no-store, must-revalidate";
     add_header Pragma "no-cache";
     add_header Expires "0";

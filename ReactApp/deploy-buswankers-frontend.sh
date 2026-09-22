@@ -352,6 +352,22 @@ else
     echo -e "${RED}[ERROR] $VERIFY_URL -> HTTP $HCODE - the API is not reachable through holly's nginx.${NC}" >&2
     exit 1
 fi
+
+# The landing page itself. A healthy API says nothing about the static side:
+# on 2026-09-22 /buswankers-api/Health was 200 while GET /buswankers/ was a
+# 500 (the no-cache index.html location aliasing a file into the index
+# module), and the deploy daemon reported OK. Probe both the bare directory
+# URL a browser actually requests and the explicit index.html.
+PAGE_BASE="${BW_PAGE_URL:-https://longmanrd.net/buswankers/}"
+for PAGE_URL in "$PAGE_BASE" "${PAGE_BASE}index.html"; do
+    PCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$PAGE_URL" 2>/dev/null || echo "000")
+    if [ "$PCODE" = "200" ]; then
+        echo -e "${GREEN}[OK] $PAGE_URL -> 200${NC}"
+    else
+        echo -e "${RED}[ERROR] $PAGE_URL -> HTTP $PCODE - the frontend is not being served by holly's nginx (check /var/log/nginx/error.log there).${NC}" >&2
+        exit 1
+    fi
+done
 echo ""
 
 echo -e "${GREEN}[OK] Frontend deployed to holly${NC}"
