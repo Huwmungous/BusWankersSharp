@@ -12,19 +12,35 @@ namespace Autofills.Common
     {
         /// <summary>
         /// Sheets that are never a sale, whatever the workbook contains: the master
-        /// roster, the queue-URL tab, and (2026-09-18) a "Scratchpad" tab Hugh uses
-        /// for his own notes while building the workbook - not to be confused with
-        /// the "URL" tab above, which is a different, longer-standing thing despite
-        /// the similar name. Compared trimmed and case-insensitive, since the real
-        /// "Starting Lineup" sheet has been seen with a trailing space in its actual
-        /// tab name.
+        /// roster and the queue-URL tab. Compared trimmed and case-insensitive,
+        /// since the real "Starting Lineup" sheet has been seen with a trailing
+        /// space in its actual tab name.
         ///
         /// This list is only a fast path - the real test is the header row (see
         /// IsSaleSheet). The 2027 workbook renamed the master roster "Glasto 2027",
         /// which no fixed name list would have caught.
         /// </summary>
         private static readonly HashSet<string> NonSaleSheetNames =
-            new(StringComparer.OrdinalIgnoreCase) { "Starting Lineup", "URL", "Scratchpad" };
+            new(StringComparer.OrdinalIgnoreCase) { "Starting Lineup", "URL" };
+
+        /// <summary>
+        /// True for any of Hugh's own scratch/notes tabs - "Scratchpad" (2026-09-18),
+        /// and (2026-09-23) "ScratchPad1", "ScratchPad2", etc, once the 2027 workbook
+        /// grew more than one of them. Matched by PREFIX rather than the exact-name
+        /// set above, so any future "ScratchPadN" is covered without a code change -
+        /// an exact match missed "ScratchPad1"/"ScratchPad2" (2026-09-23 bug: they
+        /// happen to carry a sale-shaped header - Group/Reg Number/Postcode - from
+        /// Hugh's own grouping notes, so ListSaleSheets was silently ingesting them
+        /// as if they were a real sale on every upload of that workbook). Trimmed
+        /// case-insensitive prefix, same convention as NonSaleSheetNames above.
+        /// </summary>
+        private static bool IsScratchpadSheetName(string? sheetName) =>
+            !string.IsNullOrWhiteSpace(sheetName)
+            && sheetName.Trim().StartsWith("Scratchpad", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsNonSaleSheetName(string? sheetName) =>
+            !string.IsNullOrWhiteSpace(sheetName)
+            && (NonSaleSheetNames.Contains(sheetName.Trim()) || IsScratchpadSheetName(sheetName));
 
 
         /// <summary>
@@ -39,7 +55,7 @@ namespace Autofills.Common
         /// </summary>
         private static bool IsSaleSheet(DataTable sheet)
         {
-            if (NonSaleSheetNames.Contains(sheet.TableName.Trim()) || RosterReader.IsRosterSheetName(sheet.TableName))
+            if (IsNonSaleSheetName(sheet.TableName) || RosterReader.IsRosterSheetName(sheet.TableName))
                 return false;
 
             return SheetRegistrationReader.HasSaleHeader(sheet);
@@ -97,7 +113,7 @@ namespace Autofills.Common
             {
                 var ds = ReadDataSet(reader);
 
-                if (NonSaleSheetNames.Contains(sheetName.Trim()) || RosterReader.IsRosterSheetName(sheetName))
+                if (IsNonSaleSheetName(sheetName) || RosterReader.IsRosterSheetName(sheetName))
                     throw new InvalidOperationException($"'{sheetName}' isn't a sale sheet.");
 
                 sheet = null;

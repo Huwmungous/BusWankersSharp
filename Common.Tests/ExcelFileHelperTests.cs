@@ -8,10 +8,14 @@ using Xunit;
 namespace Common.Tests;
 
 // "Scratchpad" (2026-09-18): Hugh's workbook gained a new tab he uses for his
-// own notes while building it - never a sale, never the roster. It's listed
-// in ExcelFileHelper.NonSaleSheetNames alongside "Starting Lineup" and "URL"
-// so ListSaleSheets skips it outright, even in the (deliberately tested here)
-// worst case where it happens to have a sale-shaped header row too.
+// own notes while building it - never a sale, never the roster. ExcelFileHelper
+// treats ANY sheet name starting with "Scratchpad" (case-insensitive) as one of
+// these, alongside the exact-matched "Starting Lineup" and "URL", so
+// ListSaleSheets skips it outright, even in the (deliberately tested here)
+// worst case where it happens to have a sale-shaped header row too. The prefix
+// match (rather than an exact one) is deliberate: it started as an exact match
+// and missed "ScratchPad1"/"ScratchPad2" once the workbook grew more than one
+// (2026-09-23) - see NumberedScratchpadSheetsAreNeverListedAsASale below.
 public class ExcelFileHelperTests
 {
     // A minimal, real, multi-sheet .xlsx: one sheet per (name, headerRow) -
@@ -80,6 +84,24 @@ public class ExcelFileHelperTests
         using var stream = BuildWorkbook(
             ("TestSale", new[] { "Group", "Reg Number", "Postcode" }),
             (" scratchpad ", new[] { "Group", "Reg Number", "Postcode" }));
+
+        var sales = ExcelFileHelper.ListSaleSheets(stream, "test.xlsx");
+
+        Assert.Equal(new[] { "TestSale" }, sales);
+    }
+
+    // 2026-09-23: the 2027 workbook grew TWO scratchpad tabs, "ScratchPad1" and
+    // "ScratchPad2" - neither matched the old exact-name "Scratchpad" check, so
+    // ScratchPad1 (which happens to carry Hugh's own grouping notes under a
+    // sale-shaped Group/Reg Number/Postcode header) was being silently ingested
+    // as a real sale on every upload. Covers any future "ScratchPadN" too.
+    [Fact]
+    public void NumberedScratchpadSheetsAreNeverListedAsASale()
+    {
+        using var stream = BuildWorkbook(
+            ("TestSale", new[] { "Group", "Reg Number", "Postcode" }),
+            ("ScratchPad1", new[] { "Group", "Reg Number", "Postcode" }),
+            ("ScratchPad2", new[] { "Column1", "Column2" }));
 
         var sales = ExcelFileHelper.ListSaleSheets(stream, "test.xlsx");
 
