@@ -187,6 +187,16 @@ echo -e "${BLUE}>>> Phase 3: Deploy to $REMOTE${NC}"
 STAGING="/tmp/bw-frontend-deploy.$$"
 NGINX_STAGING="/tmp/bw-frontend-nginx.$$"
 
+# Best-effort remote cleanup on any exit (normal completion, a failed rsync
+# push, or a `set -e` abort) — see deploy-breaktackle-frontend.sh for why: a
+# failed push previously left a partial staging dir on holly forever, with
+# nothing to reclaim it, and every retry added another one. Idempotent:
+# harmless if the activation step below already removed these itself.
+cleanup_staging() {
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" "rm -rf '$STAGING' '$NGINX_STAGING'" 2>/dev/null || true
+}
+trap cleanup_staging EXIT
+
 # 1. Push the build to a staging dir on holly (as $DEPLOY_USER, no sudo needed).
 echo "    Pushing build/ -> $REMOTE:$STAGING ..."
 rsync -a --delete -e "ssh -o BatchMode=yes" "build/" "$REMOTE:$STAGING/"
