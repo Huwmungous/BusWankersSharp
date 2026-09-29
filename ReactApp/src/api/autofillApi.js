@@ -30,9 +30,12 @@ export async function readErrorMessage(response, fallback) {
   return fallback;
 }
 
-// GET /files -> Map of filename -> { filename, size, lastModified } for every
-// autofill file currently in the store. A sale whose filename isn't in the map
-// is "empty" (nothing ingested for it yet).
+// GET /files -> Map of filename -> { filename, size, lastModified, hash } for
+// every autofill file currently in the store. hash is a short fingerprint of
+// the file's content (see AutofillStore.HashOf) - what the out-of-date check
+// compares, since lastModified moves on every ingest even when nothing
+// changed; '' when the server couldn't work one out. A sale whose filename
+// isn't in the map is "empty" (nothing ingested for it yet).
 export async function fetchStoredFiles() {
   const response = await fetch(`${API_BASE}/files`, { cache: 'no-store' });
   if (!response.ok) {
@@ -153,13 +156,21 @@ export function groupsUrlFor(filename) {
 // Fetch a stored file and hand it to the browser as a download, rather than
 // relying on <a download> (which is ignored for cross-path navigations in
 // some browsers and gives no error feedback on a 404).
+//
+// Resolves to { hash }: the content hash of the bytes that were actually
+// served, from the X-Autofill-Hash response header ('' if the server didn't
+// send one). The caller records THIS as the version taken - not the hash from
+// the earlier file listing - so a file re-ingested between the listing and
+// the click is recorded as what was really downloaded.
 export async function downloadStoredFile(filename) {
   const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Download failed (${response.status}).`));
   }
+  const hash = response.headers.get('X-Autofill-Hash') || '';
   const blob = await response.blob();
   saveBlob(blob, filename);
+  return { hash };
 }
 
 export function saveBlob(blob, filename) {

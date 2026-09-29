@@ -398,6 +398,15 @@ public class UploadServiceController : ControllerBase
             return NotFound(new { error = $"No autofill file '{filename}' has been ingested yet." });
 
         Response.Headers.CacheControl = "no-cache";
+
+        // The content hash of what's about to be served, so the page can record
+        // the exact version a person downloaded (see downloadStoredFile in
+        // ReactApp/src/api/autofillApi.js). Absent, not an error, if it can't
+        // be worked out - the page then falls back to the listing's values.
+        var hash = _store.HashOfStored(filename);
+        if (!string.IsNullOrEmpty(hash))
+            Response.Headers["X-Autofill-Hash"] = hash;
+
         return PhysicalFile(path, "text/csv", filename);
     }
 

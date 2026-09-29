@@ -339,7 +339,7 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 | Endpoint                     | Auth     | Used by                                            |
 |------------------------------|----------|----------------------------------------------------|
 | `POST /ingest`               | password | upload bar - every sale sheet -> the store          |
-| `GET  /files`                | none     | dropdown - which files exist, size, last modified  |
+| `GET  /files`                | none     | dropdown - which files exist, size, last modified, content hash |
 | `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
 | `GET  /running-order`        | none     | running order list + festival year (404 until ingested) |
 | `POST /sheets`, `POST /generate` | password | (no longer used by the page - kept for scripting) |
@@ -358,6 +358,37 @@ Two ways a user gets a file, both served by `GET /files/{filename}`:
 The store starts empty after a fresh install: every sale shows `(empty)` until a
 workbook has been ingested. To seed it by hand, drop a file with one of the names
 above into the store directory on intelligence (owned by `BusWankersServices`).
+
+### Knowing whether an imported file is out of date (2026-09-29)
+
+The extension holds its own copy of the file once imported, and a page cannot read
+or write another extension's storage - so the page can't *update* it, only tell
+people when it needs updating. On the extension route of the Documentation tab a
+banner under the sale dropdown does that:
+
+- `GET /files` now also returns `hash` for each file: the first 16 hex characters of
+  the SHA-256 of its content (`AutofillStore.HashOf`, cached per path while length
+  and write time are unchanged). The **hash**, not `lastModified`, decides staleness -
+  re-ingesting an unchanged spreadsheet rewrites every file and moves `lastModified`
+  without changing a byte, and that must not raise a false alarm.
+- `GET /files/{filename}` sends the same hash as `X-Autofill-Hash`, so the page
+  records what it *actually downloaded* even if a re-ingest lands between listing and
+  click.
+- The page remembers, per browser (`localStorage` key `bw-imported-versions`, see
+  `src/importedVersions.js`), the version of each sale's file it last took: recorded
+  when the person downloads through the Download button or "this link", or clicks
+  **I've imported the current file** (the only way to cover Remote Import, where the
+  extension fetches the URL itself and the page never sees it).
+- States (`updateStateFor`): `empty` (nothing shown), `never` (blue - no record of an
+  import), `current` (green tick), `stale` (amber - file changed since it was taken,
+  with Download, the confirm button and the Remote Import address).
+- It re-checks the server when the dropdown changes and when the tab or installed app
+  comes back into view (`visibilitychange`) - event-driven, no polling. Unchanged
+  listings keep their object identity (`mergeStoredFiles` in `BusWankersPage`) so a
+  re-check that finds nothing new doesn't reload the groups.
+- Limits: the record is per browser, so importing on another device shows `never`
+  there until confirmed; and the bookmark and copy & paste routes always read live
+  data, so they show no banner.
 
 ## Getting Started
 
@@ -417,6 +448,11 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
   the file is the single place that defines each sale's label, heading,
   dates, cost and filename - a new sale sheet needs an entry here to appear
   in the dropdown (the backend handles any sheet name without a code change)
+- `src/components/AutofillUpdateNotice.jsx` / `.css` - The out-of-date banner under
+  the sale dropdown (extension route): current / stale / never-imported states
+- `src/importedVersions.js` (+ `.test.js`) - Per-browser record of which version of
+  each sale's file was last downloaded or confirmed imported, and `updateStateFor`,
+  the comparison behind the banner
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
   reading, `fetchStoredFiles`, `fetchRunningOrder`, `fetchAutofillGroups`,

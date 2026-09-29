@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Autofills.UploaderService;
@@ -44,6 +46,17 @@ public sealed class AutofillStore
 
     private readonly string _directory;
 
+    /// <summary>
+    /// Content hashes already worked out, keyed by full path and valid only
+    /// while the file's length and write time are unchanged - GET /files is
+    /// hit on every page load, and re-hashing an unchanged file each time
+    /// would be wasted work. An entry that no longer matches is simply
+    /// recomputed and replaced; a deleted file's entry is harmless (never
+    /// read again, replaced if a file of that name returns). Declared as an
+    /// instance field initialiser, so it exists before the constructor runs.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, (long Length, long WriteTicks, string Hash)> _hashCache = new();
+
     public AutofillStore(IConfiguration config)
     {
         var configured = config[ConfigKey];
@@ -83,6 +96,17 @@ public sealed class AutofillStore
 
         var path = Path.Combine(_directory, fileName!);
         return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// The content hash of a stored file (see HashOf), or null if it isn't
+    /// there or isn't a safe name. Sent as X-Autofill-Hash on the download so
+    /// the page can record exactly which version a person took.
+    /// </summary>
+    public string? HashOfStored(string? fileName)
+    {
+        var path = PathOf(fileName);
+        return path == null ? null : HashOf(new FileInfo(path));
     }
 
     /// <summary>
@@ -209,9 +233,44 @@ public sealed class AutofillStore
         return finalPath;
     }
 
-    private static StoredAutofillFile ToStored(FileInfo f) =>
-        new(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero));
+    private StoredAutofillFile ToStored(FileInfo f) =>
+        new(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero), HashOf(f));
+
+    /// <summary>
+    /// A short, stable fingerprint of a file's CONTENT (first 16 hex characters
+    /// of its SHA-256). This - not LastModified - is what the page compares to
+    /// decide whether the copy someone last took is out of date: an ingest of
+    /// an unchanged spreadsheet rewrites every file (new LastModified, same
+    /// bytes), and that must not raise a false "update available". Falls back
+    /// to an empty string if the file can't be read (vanished mid-listing, say),
+    /// which the frontend treats as "no hash - compare LastModified instead".
+    /// </summary>
+    private string HashOf(FileInfo f)
+    {
+        var writeTicks = f.LastWriteTimeUtc.Ticks;
+        if (_hashCache.TryGetValue(f.FullName, out var cached) && cached.Length == f.Length && cached.WriteTicks == writeTicks)
+            return cached.Hash;
+
+        try
+        {
+            using var stream = new FileStream(f.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()[..16];
+            _hashCache[f.FullName] = (f.Length, writeTicks, hash);
+            return hash;
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
 }
 
-/// <summary>One file in the store, as reported by GET /api/autofill/files.</summary>
-public sealed record StoredAutofillFile(string Filename, long Size, DateTimeOffset LastModified);
+/// <summary>
+/// One file in the store, as reported by GET /api/autofill/files. Hash is a
+/// short content fingerprint (see AutofillStore.HashOf) - empty if unavailable.
+/// </summary>
+public sealed record StoredAutofillFile(string Filename, long Size, DateTimeOffset LastModified, string Hash = "");
