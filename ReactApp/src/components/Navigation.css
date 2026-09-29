@@ -93,6 +93,32 @@
   background-color: #1ebe5b;
 }
 
+/* Log out: a button that looks like the tabs but outlined, so it reads as an
+   action rather than a page section. */
+.nav-item-logout {
+  margin-left: 12px;
+  padding-bottom: 6px;
+}
+
+.nav-link-logout {
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  padding: 8px 14px;
+}
+
+.nav-link-logout:hover:not(:disabled) {
+  background-color: #34495e;
+  border-color: white;
+}
+
+.nav-link-logout:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* Tablet and phone: logo on its own centred row, the tabs below it in ONE
    row. Seven tabs never fit a phone, so rather than wrapping into several
    rows (which breaks the "attached tab" look) the strip scrolls sideways;
@@ -131,6 +157,10 @@
   }
 
   .nav-item-whatsapp {
+    margin-left: 8px;
+  }
+
+  .nav-item-logout {
     margin-left: 8px;
   }
 

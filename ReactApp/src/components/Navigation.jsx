@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { TABS, useActiveTab } from '../tabs';
 import { WHATSAPP_GROUP_URL } from '../links';
 import InstallPrompt from './InstallPrompt';
+import LogoutButton from './LogoutButton';
 import './Navigation.css';
 
 // The tab bar. Each entry is a real link to the tab's hash (#documentation,
@@ -70,6 +71,9 @@ const Navigation = () => {
                 </a>
               </li>
             )}
+            <li className="nav-item nav-item-logout" role="presentation">
+              <LogoutButton />
+            </li>
           </ul>
         </div>
       </nav>
