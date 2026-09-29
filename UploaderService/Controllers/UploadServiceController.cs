@@ -570,7 +570,16 @@ public class UploadServiceController : ControllerBase
     /// </summary>
     public sealed record GroupsDocument(List<GroupData> Groups);
 
-    public sealed record GroupData(string Code, string Label, string Name, List<MemberData> Members);
+    /// <summary>
+    /// One group in the groups sidecar / GET /files/{filename}/groups. Departure
+    /// (2026-09-29) is the group's departure point from the sheet's "Depart"
+    /// column - one value for the whole group (see RegistrationGroup) - and is
+    /// "" when the sale has none. It's display-only: the page shows it on the
+    /// group, the autofill CSV and the bookmarklet's fill don't use it (the
+    /// registration form has no such field - coach travel is chosen after the
+    /// ticket purchase).
+    /// </summary>
+    public sealed record GroupData(string Code, string Label, string Name, List<MemberData> Members, string Departure = "");
 
     public sealed record MemberData(string RegistrationId, string PostCode);
 
@@ -582,7 +591,7 @@ public class UploadServiceController : ControllerBase
         {
             var g = groups[i];
             var members = g.Members.Select(m => new MemberData(m.RegistrationId, m.PostCode)).ToList();
-            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"{namePrefix}Group-{g.GroupLabel}", members));
+            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"{namePrefix}Group-{g.GroupLabel}", members, g.Departure));
         }
         return new GroupsDocument(data);
     }

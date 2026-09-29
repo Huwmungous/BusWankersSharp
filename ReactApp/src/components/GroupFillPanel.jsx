@@ -92,6 +92,9 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl, saleFolderLabe
         <div className="bw-group-title">
           <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="bw-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
+          {group.departure && (
+            <span className="bw-group-departure">Departs from <strong>{group.departure}</strong></span>
+          )}
         </div>
         <div className="bw-group-actions">
           <BookmarkletLink group={group} year={year} groupsUrl={groupsUrl} saleFolderLabel={saleFolderLabel} />

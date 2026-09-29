@@ -390,6 +390,30 @@ banner under the sale dropdown does that:
   there until confirmed; and the bookmark and copy & paste routes always read live
   data, so they show no banner.
 
+### Group departure point (2026-09-29)
+
+The Coach sheet has a **Depart** column (also accepted: `Departs`, `Departure`,
+`Departure Point`, `Departure Location`; case-insensitive; optional - the General
+sheets have none). It is repeated on every member's row but belongs to the
+**group**, so it is resolved once per group, never per person:
+
+- `SheetRegistrationReader.ResolveDeparture` takes the group's non-blank values
+  (case-insensitive). If they agree, that's the group's `Departure`. If they
+  disagree the most common wins (ties: first listed) and the ingest reports an
+  amber warning naming every value, so the sheet can be fixed - the upload still
+  succeeds, same policy as the Lead Booker warnings. No values at all is simply "no
+  departure yet" with no warning.
+- It is carried in the groups sidecar (`GET /files/{filename}/groups`, field
+  `departure`) and shown on each group's heading ("Departs from ..."), on the Groups
+  tab and in the Documentation tab's group panel. It is display-only: the autofill CSV
+  (the extension's import file) and the bookmarklet's fill don't use it, because the
+  registration form has no such field - coach travel is chosen after the ticket
+  purchase.
+- The page reads it best-effort (`fetchGroupDepartures`): a missing or unreachable
+  sidecar means no departure shown, never a failed group load.
+- **A sale ingested before this existed has no departures until its spreadsheet is
+  uploaded again** - the value only exists on the spreadsheet.
+
 ## Getting Started
 
 1. Install dependencies:
