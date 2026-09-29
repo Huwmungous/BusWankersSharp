@@ -443,7 +443,10 @@ banner under the sale dropdown does that:
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
   dropdown, key dates, the three-way method chooser (extension/bookmark/copy
   & paste, each with a short Pros/Cons list - extension is the default and
-  leftmost), the bookmarklet steps, the collapsed extension instructions, and
+  leftmost), the bookmarklet steps (in the installed app, which has no bookmarks
+  bar to drag onto, a **Copy bookmark** button plus steps for pasting it into a
+  new bookmark in the browser, with "open in browser and drag it" as the
+  alternative), the collapsed extension instructions, and
   the copy & paste method's link to the Groups tab. `SALE_INFO` at the top of
   the file is the single place that defines each sale's label, heading,
   dates, cost and filename - a new sale sheet needs an entry here to appear

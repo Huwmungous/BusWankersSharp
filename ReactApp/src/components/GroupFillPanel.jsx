@@ -50,7 +50,10 @@ export const copyText = async (text) => {
   }
 };
 
-export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => {
+// title: the tooltip. Defaults to showing the text being copied, which suits a
+// registration number or postcode but not a whole bookmark's worth of code -
+// pass something short for those.
+export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied', title }) => {
   const [state, setState] = useState('idle'); // idle | copied | failed
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -61,7 +64,7 @@ export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => 
     timer.current = setTimeout(() => setState('idle'), 2000);
   };
   return (
-    <button type="button" className={`bw-copy bw-copy-${state}`} onClick={onClick} title={`Copy "${text}"`}>
+    <button type="button" className={`bw-copy bw-copy-${state}`} onClick={onClick} title={title || `Copy "${text}"`}>
       {state === 'copied' ? copiedLabel : state === 'failed' ? 'Copy failed' : label}
     </button>
   );
