@@ -44,7 +44,7 @@ const InstallPrompt = () => {
 
   return (
     <div className="install-prompt-banner" role="alert">
-      <span>Install Bus Wankers as an app — works offline!</span>
+      <span>Install Bus Wankers as an app</span>
       <button onClick={install} className="install-btn-install">Install</button>
       <button onClick={dismiss} className="install-btn-dismiss" aria-label="Dismiss install prompt">&times;</button>
     </div>

@@ -327,6 +327,31 @@
   padding: 10px 14px;
 }
 
+/* Shown in place of the draggable bookmark when the page is running as the
+   installed app (see useIsStandalone): amber because it's a "you can't do
+   this from here" notice with steps, not an error. Overrides .bw-note's
+   muted grey so it reads as the main content of Step 1, which it is. */
+.doc-section .doc-standalone-note {
+  max-width: 760px;
+  margin: 12px auto;
+  text-align: left;
+  font-size: 1em;
+  color: #333;
+  background-color: #fff7e6;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.doc-section .doc-standalone-note ul {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+}
+
+.doc-section .doc-standalone-note li {
+  margin: 4px 0;
+}
+
 .doc-section .doc-alt {
   max-width: 760px;
   margin: 30px auto;
