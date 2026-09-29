@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Autofills.UploaderService.Controllers;
@@ -5,8 +6,9 @@ namespace Autofills.UploaderService.Controllers;
 /// <summary>
 /// GET /api/time - NTP-corrected UTC for the page's sale-day launcher.
 ///
-/// Not password-gated: it gives away nothing but the time of day, and the
-/// launcher needs it from every browser on every group member's machine.
+/// Anonymous ([AllowAnonymous]) even though the rest of the service now needs
+/// a Keycloak token for writes: it gives away nothing but the time of day, and
+/// the launcher needs it from every browser on every group member's machine.
 ///
 /// The reply carries TWO server timestamps, both NTP-corrected:
 ///   receivedMs - when this request arrived
@@ -34,6 +36,7 @@ public class TimeController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var receivedLocal = DateTimeOffset.UtcNow;

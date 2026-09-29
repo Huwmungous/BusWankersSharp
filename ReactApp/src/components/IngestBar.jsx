@@ -1,6 +1,13 @@
 import React, { useRef, useState } from 'react';
+import { LoggerService } from '@if/web-common';
 import { ingestWorkbook } from '../api/autofillApi';
 import './IngestBar.css';
+
+// Created when used, not at module load - see apiLog in ../api/autofillApi.
+const barLog = (context) => {
+  const base = LoggerService.create('IngestBar');
+  return context ? base.withContext(context) : base;
+};
 
 // The roster outcome of an ingest rendered as one more row in the per-sheet
 // list, so the person uploading sees it alongside the sales it was read with.
@@ -18,14 +25,15 @@ const rosterAsResult = (ro) => ({
 });
 
 // The upload button at the very top of the page. Pick a registration
-// workbook, give the shared password, and every sale sheet in it is ingested
-// into the live autofill files in one go (an emptied sale sheet removes its
-// file), and the roster sheet becomes the running order - the other tabs
-// refresh themselves off the result via onIngested. (The old one-off
-// generate-and-download form was dropped from the page on 2026-09-16; the
-// backend's /sheets and /generate routes still exist if it's ever wanted.)
+// workbook and every sale sheet in it is ingested into the live autofill files
+// in one go (an emptied sale sheet removes its file), and the roster sheet
+// becomes the running order - the other tabs refresh themselves off the result
+// via onIngested. There is no password field any more (2026-09-29): the whole
+// page sits behind a Keycloak sign-in, and the API checks the access token that
+// sign-in produced. (The old one-off generate-and-download form was dropped
+// from the page on 2026-09-16; the backend's /sheets and /generate routes still
+// exist if it's ever wanted.)
 const IngestBar = ({ onIngested }) => {
-  const [password, setPassword] = useState('');
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | working | done | error
   const [message, setMessage] = useState('');
@@ -52,7 +60,7 @@ const IngestBar = ({ onIngested }) => {
     setResults([]);
 
     try {
-      const { results: outcome, runningOrder } = await ingestWorkbook(file, password);
+      const { results: outcome, runningOrder } = await ingestWorkbook(file);
       const okCount = outcome.filter((r) => r.status === 'ok').length;
       const clearedCount = outcome.filter((r) => r.status === 'empty' && r.cleared).length;
       const emptyCount = outcome.filter((r) => r.status === 'empty' && !r.cleared).length;
@@ -70,6 +78,9 @@ const IngestBar = ({ onIngested }) => {
         else if (runningOrder.status === 'failed') parts.push('running order failed - see below');
       }
 
+      barLog({ okCount, clearedCount, emptyCount, failCount, rosterStatus: runningOrder ? runningOrder.status : 'none' })
+        .debug('Ingest finished');
+
       setResults(runningOrder ? [...outcome, rosterAsResult(runningOrder)] : outcome);
       setStatus(failCount === 0 && !rosterFailed ? 'done' : 'error');
       setMessage(`${file.name}: ${parts.join(', ')}.`);
@@ -81,6 +92,8 @@ const IngestBar = ({ onIngested }) => {
 
       if (onIngested) onIngested(outcome);
     } catch (err) {
+      barLog({ reason: err && err.message, sheetResults: Array.isArray(err && err.results) ? err.results.length : 0 })
+        .warn('Ingest failed');
       setStatus('error');
       setMessage(err.message || 'Could not reach the upload service.');
       // "No sheet could be ingested" comes with the per-sheet reasons - show them.
@@ -126,17 +139,6 @@ const IngestBar = ({ onIngested }) => {
             className="ingest-input"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
-            disabled={status === 'working'}
-          />
-          <input
-            id="ingest-password"
-            type="password"
-            className="ingest-input ingest-password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="off"
-            required
             disabled={status === 'working'}
           />
           <button type="submit" className="ingest-button" disabled={status === 'working' || !file}>

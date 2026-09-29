@@ -6,16 +6,48 @@
 // holly's nginx to the UploaderService backend running on intelligence. See
 // ops/nginx/buswankers-api.inc. Fixed from the domain root rather than built off
 // PUBLIC_URL, since this API isn't served under /buswankers/ itself.
+import { LoggerService } from '@if/web-common';
 import { parseAutofillCsv } from '../bookmarklet';
 
 export const API_BASE = '/buswankers-api/api/autofill';
+
+// Authentication (2026-09-29): the page signs in through Keycloak before it
+// renders (see src/main.jsx), and the fetch interceptor AppInitializer installs
+// attaches the access token to every fetch() below - nothing here handles a
+// token itself. The write route (POST /ingest) needs it; the GET routes are
+// anonymous on the server so the extension and bookmarklets keep working, and
+// simply carry a harmless token when the page calls them.
+
+// Created on demand rather than at module load: LoggerService configures itself
+// from the config service the first time it's used, and that is only ready once
+// AppInitializer has finished. Every call is made from a component or handler
+// that runs after that, so this is always safe - a module-level logger would
+// not be. Attributes go in as context fields (searchable in the log viewer)
+// rather than being spliced into the message text.
+const apiLog = (context) => {
+  const base = LoggerService.create('autofillApi');
+  return context ? base.withContext(context) : base;
+};
+
+// Shown when the server turns a request away for want of a valid sign-in.
+// Exported so the components can recognise it if they ever need to.
+export const SESSION_EXPIRED_MESSAGE =
+  'Your sign-in has expired - reload the page to sign in again.';
+export const NOT_ALLOWED_MESSAGE = "Your account isn't allowed to do that.";
 
 // UploaderService always answers with a JSON { error } body, so a non-JSON
 // error response didn't come from it - it came from holly's nginx (or
 // whatever sits in front), most often because /buswankers-api/ isn't being
 // proxied. Say so: "Request failed (404)" on its own sent a real
 // investigation down the wrong path once.
+//
+// The exception is a 401/403: the token check happens before the service's
+// own code runs, so those come back with an empty body - which would
+// otherwise be mistaken for the "not being proxied" case above.
 export async function readErrorMessage(response, fallback) {
+  if (response.status === 401) return SESSION_EXPIRED_MESSAGE;
+  if (response.status === 403) return NOT_ALLOWED_MESSAGE;
+
   try {
     const body = await response.json();
     if (body && body.error) return body.error;
@@ -67,17 +99,23 @@ function normaliseRunningOrderResult(r) {
 
 // POST /ingest -> { results, runningOrder }. `results` is the per-sale-sheet
 // list; `runningOrder` is the roster outcome (see normaliseRunningOrderResult).
-// Throws with the server's message on a non-2xx (wrong password, unreadable
-// workbook, nothing ingested at all); when the server included per-sheet
-// results with that error (it does for "no sheet could be ingested"), they're
-// attached to the thrown Error as `results` so the page can show WHICH sheets
-// failed and why, rather than just a status code.
-export async function ingestWorkbook(file, password) {
+// Throws with the server's message on a non-2xx (signed-out or expired session,
+// unreadable workbook, nothing ingested at all); when the server included
+// per-sheet results with that error (it does for "no sheet could be ingested"),
+// they're attached to the thrown Error as `results` so the page can show WHICH
+// sheets failed and why, rather than just a status code.
+//
+// No password any more: the caller is identified by the Keycloak access token
+// the fetch interceptor attaches to this request. Don't set a Content-Type
+// header here - the browser must add the multipart boundary itself.
+export async function ingestWorkbook(file) {
+  apiLog({ fileName: file && file.name, fileBytes: file && file.size }).debug('Ingest request starting');
+
   const form = new FormData();
   form.append('file', file);
-  form.append('password', password);
 
   const response = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: form });
+  apiLog({ status: response.status, ok: response.ok }).debug('Ingest response received');
   if (!response.ok) {
     let results = [];
     let message = `Request failed (${response.status}).`;
@@ -134,7 +172,8 @@ export async function fetchAutofillGroups(filename) {
   return parseAutofillCsv(text);
 }
 
-// Public download URL for a stored autofill file (no password needed).
+// Public download URL for a stored autofill file (anonymous on the server - the
+// AutoFill Options extension fetches it with no sign-in).
 export function downloadUrlFor(filename) {
   return `${API_BASE}/files/${encodeURIComponent(filename)}`;
 }

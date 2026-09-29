@@ -15,13 +15,26 @@
 
 export const TIME_URL = '/buswankers-api/api/time';
 
+// The browser's own fetch, captured when this module loads - which is before
+// AppInitializer (src/main.jsx) replaces window.fetch with a version that looks
+// up the access token and attaches it to each call. /api/time is anonymous, so
+// it has no use for a token, and that lookup would happen BETWEEN the moment
+// `t0` is taken below and the request actually leaving the browser: an
+// asymmetric delay, which the offset arithmetic reads as clock error. Declared
+// here, above sampleOnce, and only ever read inside it.
+const nativeFetch =
+  typeof window !== 'undefined' && typeof window.fetch === 'function'
+    ? window.fetch.bind(window)
+    : null;
+
 // One exchange with /api/time. Returns { offsetMs, rttMs, source, server,
 // serverOffsetMs } or throws with a message the page can show.
 export async function sampleOnce() {
   const t0 = Date.now();
   let response;
   try {
-    response = await fetch(`${TIME_URL}?_=${t0}`, { cache: 'no-store' });
+    // Falls back to whatever fetch is current if there was no window at load.
+    response = await (nativeFetch || fetch)(`${TIME_URL}?_=${t0}`, { cache: 'no-store' });
   } catch (err) {
     throw new Error(`Could not reach the time service (${err.message || 'network error'}).`);
   }

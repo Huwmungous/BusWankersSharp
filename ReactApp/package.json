@@ -1,26 +1,32 @@
 {
   "name": "bus-wankers-react-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "homepage": "/buswankers",
+  "type": "module",
+  "description": "Bus Wankers autofill downloads - React front end (Vite, signs in through Keycloak via @if/web-common)",
+  "scripts": {
+    "start": "vite --mode development",
+    "dev": "vite --mode development",
+    "build": "vite build",
+    "rebuild": "npm --prefix ../../Infoforum/if-web-common-react run rebuild && npm install && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
+    "@if/web-common": "file:../../Infoforum/if-web-common",
+    "@if/web-common-react": "file:../../Infoforum/if-web-common-react",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.0",
-    "react-scripts": "5.0.1",
     "workbox-window": "^7.0.0"
   },
-  "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+  "devDependencies": {
+    "@testing-library/react": "^16.3.1",
+    "@vitejs/plugin-react": "^5.1.0",
+    "happy-dom": "^20.0.11",
+    "vite": "^7.2.2",
+    "vitest": "^4.0.16"
   },
   "browserslist": {
     "production": [

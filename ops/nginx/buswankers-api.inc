@@ -46,7 +46,17 @@ location /buswankers-api/ {
 # ".../index.htmlindex.html is not a directory" -> HTTP 500 on the landing
 # page (2026-09-22). try_files with an explicit file serves it directly and
 # never reaches the index module; the MIME type comes from the .html name.
-location ~ ^/buswankers/(index\.html)?$ {
+#
+# The three OIDC callback routes (2026-09-29) are served the same way. The app
+# signs in through Keycloak, which sends the browser back to
+# /buswankers/signin/callback (and /signout/callback, and /silent-callback in a
+# hidden iframe for token renewal) - paths that are routes of the SPA, not files
+# on disk. holly's inline `location /buswankers/` is not known to carry a
+# try_files fallback to index.html, so without these a sign-in would come back to
+# a bare nginx 404. They are matched exactly (the code/state query string is not
+# part of the match), and must agree with the redirect URIs src/main.jsx builds
+# and the Keycloak client allows.
+location ~ ^/buswankers/(index\.html|signin/callback|signout/callback|silent-callback)?$ {
     root /srv/BusWankersSharp/www;
     try_files /buswankers/index.html =404;
     add_header Cache-Control "no-cache, no-store, must-revalidate";

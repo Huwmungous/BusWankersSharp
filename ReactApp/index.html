@@ -13,10 +13,14 @@
          https://issues.chromium.org/issues/40332768, a long-standing open
          Chromium request for exactly this. Bookmarklet entries keep Chrome's
          generic bookmark icon; there is no supported way from the page side to
-         change that. -->
+         change that.
 
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" sizes="16x16 32x32 48x48 64x64" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon-32.png" type="image/png" sizes="32x32" />
+         Asset URLs below are root-relative ("/favicon.ico"): Vite prefixes them
+         with the configured base (/buswankers/), which replaces CRA's
+         %PUBLIC_URL% placeholder. -->
+
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <!-- viewport-fit=cover lets the installed app use the whole screen on
          notched phones; App.css keeps content clear of the notch with
          env(safe-area-inset-*). -->
@@ -33,12 +37,13 @@
       name="description"
       content="Bus Wankers Autofill Downloads"
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" sizes="180x180" />
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/manifest.json" />
     <title>Bus Wankers Autofill Downloads</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
