@@ -19,6 +19,18 @@
   font-weight: bold;
   text-decoration: none;
   padding-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The camper van mark (public/nav-logo.png, 96px source shown at 40px so it
+   stays crisp on high-DPI screens). Sized by the same image the favicon and
+   installed-app icons are generated from, so the page and the icon match. */
+.nav-logo-image {
+  height: 40px;
+  width: 40px;
+  object-fit: contain;
 }
 
 .nav-menu {
@@ -86,7 +98,7 @@
   }
 
   .nav-logo {
-    text-align: center;
+    justify-content: center;
     padding-bottom: 8px;
   }
 

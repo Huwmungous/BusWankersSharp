@@ -172,11 +172,7 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    `General Filler` / `Coach Resale Filler` / `General Resale Filler` - short
    enough to read at a glance in a crowded bookmarks bar, and still
    sale-specific via `saleFolderLabel` so it can never be confused with the
-   other sale's bookmark. The app also now ships a real favicon
-   (`public/favicon.svg`, a bus-and-ticket mark referenced from
-   `public/index.html`/`public/manifest.json`) where before there was none -
-   `favicon.ico`/`logo192.png`/`logo512.png` were referenced by the
-   Create-React-App template but never actually existed. **This only fixes
+   other sale's bookmark. The app also ships a real icon. **This only fixes
    the app's own icon (browser tab, PWA manifest) - it does NOT put an icon
    on the bookmarks bar.** A `javascript:` bookmarklet never gets a real
    favicon in Chrome, no matter what icon the page it was dragged from has -
@@ -187,6 +183,25 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (a downloadable bookmarks-HTML file with the icon baked in, or a
    third-party "Bookmark Icon Customizer" extension) and chose to live with
    the generic icon rather than add either.
+
+   **App icon is the orange camper van (2026-09-29):** the earlier
+   hand-drawn `favicon.svg` is gone; every icon is now rendered from one
+   piece of artwork (an orange-and-cream VW camper with a peace sign on the
+   front, transparent background) into the files in `public/`:
+   `favicon.ico` (16/32/48/64) and `favicon-32.png` for the tab;
+   `logo192.png`/`logo512.png` (`purpose: any`, transparent, van fills the
+   frame) and `logo192-maskable.png`/`logo512-maskable.png` (`purpose:
+   maskable`, van inside the 80% safe zone on a cream `#f7ecd3` plate, which
+   is also the manifest's `background_color` so the splash matches) for the
+   installed app on Android/desktop; `apple-touch-icon.png` (180px, cream,
+   no alpha - iOS rounds it itself) for the iOS home screen; and
+   `nav-logo.png` (96px, shown at 40px in `Navigation.jsx`'s `.nav-logo`
+   link) so the page header carries the same mark. `any` and `maskable`
+   are deliberately separate entries rather than `"any maskable"` on one
+   file: a single file can only be right for one of them (a maskable icon
+   needs the padding and solid plate, an `any` icon looks small with it).
+   The install banner (`InstallPrompt.jsx`) now reads just "Install Bus
+   Wankers as an app" - the "works offline!" tail was dropped on the same day.
 
 
    **Lead Booker (2026-09-18):** each group has one "Lead Booker" - whoever's

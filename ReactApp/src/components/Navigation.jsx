@@ -23,6 +23,7 @@ const Navigation = () => {
       <nav className="navigation" aria-label="Page sections">
         <div className="nav-container">
           <a href="#documentation" className="nav-logo" onClick={(e) => onTabClick(e, 'documentation')}>
+            <img src={`${process.env.PUBLIC_URL}/nav-logo.png`} alt="" className="nav-logo-image" />
             Bus Wankers
           </a>
           <ul className="nav-menu" role="tablist">
