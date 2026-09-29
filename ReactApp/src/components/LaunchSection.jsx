@@ -2,16 +2,22 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { correctedNow, scheduleAt, syncClock } from '../launch/clock';
 import { buildLaunchLink, loadConfig, saveConfig } from '../launch/config';
 import { formatLondon, formatLondonClock, londonWallToEpoch } from '../launch/londonTime';
+import LauncherHelperCard from './LauncherHelperCard';
 import './LaunchSection.css';
 
 // The "Launcher" tab: arm this browser to open the ticket page, in a window of
 // its own, at the sale time - on NTP-corrected time.
 //
-// A web page cannot start OTHER browsers (Chrome can't launch Firefox), so
-// the way to have several browsers in the queue is to open this page in each
-// of them and arm each one - every armed browser counts itself down on the
-// true time (see launch/clock.js) and, at the moment, sends its launch
-// window to the ticket URL. This tab stays put, showing what happened.
+// A web page cannot start OTHER browsers (Chrome can't launch Firefox), and an
+// installed web app is only a page in a window of its own. So there are two
+// ways to have several browsers in the queue:
+//   - open this page in each browser and arm each one - every armed browser
+//     counts itself down on the true time (see launch/clock.js) and, at the
+//     moment, sends its launch window to the ticket URL; or
+//   - on a computer, run the native helper (LauncherHelper/, offered by
+//     LauncherHelperCard) which opens the ticket page in every installed
+//     browser itself. That card also covers Android (tap-to-open links).
+// This tab stays put, showing what happened.
 // Settings are per browser (localStorage, see launch/config.js) with a
 // launch link to copy them from one browser to the next.
 //
@@ -402,6 +408,7 @@ const LaunchSection = ({ year }) => {
           Arm this browser and, at the sale time exactly, it opens the ticket page in a window of its own - on true (NTP) time,
           not whatever this computer&rsquo;s clock thinks. Open this page in <strong>every browser you have</strong>
           {' '}(Chrome, Firefox, Edge, Opera, Safari&hellip;) and arm each one: each is a separate entrant in the queue.
+          Or, on a computer, use <strong>step 4</strong> below to open every browser on it in one go.
         </p>
 
         {notice && <p className="launch-notice">{notice}</p>}
@@ -558,6 +565,8 @@ const LaunchSection = ({ year }) => {
           </div>
         </div>
 
+        <LauncherHelperCard config={config} />
+
         <details className="launch-how">
           <summary>How to use this on sale day</summary>
           <ol>
@@ -568,8 +577,10 @@ const LaunchSection = ({ year }) => {
             <li>Then it&rsquo;s the usual drill: in whichever browser gets through, use its <em>Fill Group</em> bookmark (Documentation tab) to fill the form.</li>
           </ol>
           <p className="launch-muted">
-            Why not one button that launches every browser? A web page can&rsquo;t start other programs - Chrome can&rsquo;t open Firefox.
-            Arming the page in each browser is the no-install way to get the same result; each browser is its own queue place.
+            Why isn&rsquo;t there just one button here that launches every browser? A web page can&rsquo;t start other programs -
+            Chrome can&rsquo;t open Firefox, and the installed app can&rsquo;t open either. Step 4 gets round that with a small
+            program you run on the computer; arming the page in each browser is the no-install way to get the same result.
+            Either way, each browser is its own queue place.
           </p>
         </details>
       </div>

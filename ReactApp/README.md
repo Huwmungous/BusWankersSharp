@@ -561,6 +561,74 @@ group (see below).
   `npm run rebuild` rebuilds the linked Infoforum libraries first; `npm test` runs
   the Vitest suite.
 
+## The Launcher tab and its helper (2026-09-29)
+
+The Launcher tab opens the ticket page at the sale time, on NTP-corrected time (the page
+asks UploaderService's `/api/time`, which does the SNTP query - see `NtpClock.cs`). Arming
+a browser makes *that browser* jump; a web page can't start any other program, and the
+installed app (PWA) is only a page in a window of its own, so its "launch window" is not a
+real browser. Getting several real browsers into the queue therefore has two routes:
+
+- **Arm each browser** (the original route, unchanged): open the page in every browser and
+  arm each one. Settings travel between browsers in the launch link.
+- **The native helper** (step 4 on the tab, source in `LauncherHelper/`): a small .NET
+  console program, published self-contained and single-file for Windows, macOS (Apple
+  silicon and Intel) and Linux, that a person downloads and runs on their computer. At the
+  sale time it opens the ticket page in **every browser it finds installed** (Chrome, Edge,
+  Firefox, Brave, Opera, Opera GX, Vivaldi, Chromium, and Safari on a Mac).
+
+How the helper works:
+
+- **Its own NTP:** it speaks SNTP directly (UDP 123), so it needs neither this service nor a
+  sign-in. It re-syncs 12 seconds before the jump and logs how far the computer's clock was
+  out. If no NTP server can be reached it says so and uses the computer's clock.
+- **Warm-up:** 45 seconds early (`--warm`) each browser is started on a blank page, so the
+  real jump is a fast hand-off to a running browser rather than a cold start. On a Mac
+  everything goes through `open -a`, elsewhere through the browser's own
+  `--new-window` / `-new-window`.
+- **Timing:** waiting is coarse sleeps then a short spin against the corrected clock; a
+  rehearsal typically lands within about a millisecond of its moment. `--lead` (default
+  200 ms early) and `--stagger` (each browser waits its own random delay up to 300 ms) match
+  the page's settings of the same names.
+- **UK time by hand:** `--at` is a London wall-clock time; `LondonTime.cs` applies the BST
+  rules itself (last Sunday of March to last Sunday of October, 01:00 UTC), so the published
+  binary needs no ICU or time-zone database.
+- **Options:** `--url`, `--at`, `--rehearse <s>`, `--lead`, `--stagger`, `--warm`, `--only
+  chrome,firefox`, `--ntp`, `--dry-run`, `--verbose`, `--list`, `--help`. Started with no
+  arguments (double-clicked) it asks for the URL and sale time. Exit codes: 0 all opened, 1
+  some failed, 2 bad options, 3 no browsers found, 4 sale time already past, 130 cancelled.
+  Logs are a sentence plus `key=value` attributes.
+- **The page builds the command** from its own settings (`src/launch/helperCommand.js`,
+  quoting for cmd/PowerShell or a POSIX shell), with a rehearsal variant and Copy buttons.
+  Each machine that runs the helper is its own set of queue places, so use it on every
+  computer you have, not only one.
+- **Android** can't run the helper. A page there *can* open another browser app, but only
+  from a tap (Chrome refuses it from a timer), so the tab shows an "Open in Firefox / Edge /
+  Samsung Internet..." button per browser, built as `intent://` links with the ticket page
+  as the fallback. iPhones and iPads allow neither, so they arm each browser as before.
+
+Publishing: `LauncherHelper/publish-launcher.sh <dir>` publishes the four zips (each with
+`README.txt` from `README-download.txt`). `deploy-buswankers-frontend.sh` runs it after the
+Vite build into `build/launcher/`, so they ride the normal rsync to
+`/buswankers/launcher/`. It is best effort: without the .NET SDK, or if a runtime pack can't
+be fetched, the site still deploys. The tab checks once (no polling) that its download
+really exists and says so if not - nginx answers a missing file with `index.html`, so "200
+OK" alone doesn't prove a zip is there. Each zip is about 31 MB; trimming was tried and did
+not complete in the build sandbox, so the builds are untrimmed.
+
+Things people will hit, all in the zip's README: Windows SmartScreen ("More info", "Run
+anyway" - the exe is unsigned); on a Mac, `chmod +x` and clearing the quarantine flag, and
+allowing Terminal to control each browser on first use (do that in the rehearsal); on Linux
+and macOS, leave the terminal open until through, since closing it can close the browsers it
+started. Snap/Flatpak browsers are found only if their command is on `PATH`.
+
+Tests: `LauncherHelper.Tests` (xunit - options, London time, NTP parsing, browser
+discovery for each OS through a fake probe, and the scheduler against a recording starter)
+and `src/launch/helperCommand.test.js` / `src/components/LauncherHelperCard.test.jsx`. The
+repo's verify gate only builds the solution, so run `dotnet test LauncherHelper.Tests`
+by hand; a couple of scheduler tests deliberately wait a second or two of real time.
+
+
 ## Deployment
 
 Two halves, both wired into RozeBowlDeployDaemon's trunk pipeline on queeg (steps

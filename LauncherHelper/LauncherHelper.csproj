@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The sale-day launcher helper: a small console program a person downloads from the
+       page's Launcher tab and runs on their own computer. A web page (and an installed
+       web app, which is just a page in its own window) cannot start other programs, so
+       this is the piece that actually opens Chrome, Firefox, Edge... at the sale time.
+       No package references on purpose: it is published self-contained and single-file
+       (see publish-launcher.sh) so the person needs nothing else installed. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BusWankersLauncher</AssemblyName>
+    <RootNamespace>Autofills.LauncherHelper</RootNamespace>
+    <!-- No ICU dependency: the London time rules are implemented by hand (LondonTime.cs),
+         so a Linux box without libicu can still run the published binary. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README-download.txt" />
+  </ItemGroup>
+
+</Project>
