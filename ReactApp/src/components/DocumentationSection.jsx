@@ -7,6 +7,7 @@ import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName, saleBoo
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
+import { useIsStandalone } from '../displayMode';
 import { buildNameLookup } from '../runningOrder';
 import './DocumentationSection.css';
 
@@ -36,6 +37,14 @@ import './DocumentationSection.css';
 //     standalone Groups tab (see GroupsSection), where every registration
 //     number and postcode has its own Copy button, for when neither of the
 //     above is working or practical (e.g. no bookmarks bar on a phone).
+// Installed-app awareness (2026-09-29): when the page is running as the
+// installed app (useIsStandalone) there is no bookmarks bar and nothing to
+// drag onto, and the fill bookmark can only ever run from a browser tab on
+// the See Tickets page - so the Bookmark route swaps its drag instructions
+// for "open this page in your browser to set the bookmark up" steps (a
+// one-off: once the bookmark is on the bar it works whether or not the app
+// is installed), and the Copy & paste card says it works anywhere. Nothing
+// else on the page cares which way it was opened.
 // The chosen method is remembered per browser (localStorage) so someone who
 // picked a different route lands on their own instructions next time.
 //
@@ -104,6 +113,7 @@ const DocumentationSection = ({
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
   const nameLookup = useMemo(() => buildNameLookup(runningOrder), [runningOrder]);
+  const isStandalone = useIsStandalone(); // running as the installed app (no bookmarks bar)
 
   const info = SALE_INFO[saleType];
   const {
@@ -257,7 +267,8 @@ const DocumentationSection = ({
             >
               <span className="method-card-title">Copy &amp; paste</span>
               <span className="method-card-text">
-                If all else fails, copy and paste text from the Groups page.
+                If all else fails, copy and paste text from the Groups page. Works anywhere - a phone, a borrowed
+                laptop, or inside the installed app - because there is nothing to set up.
               </span>
             </button>
           </div>
@@ -267,7 +278,30 @@ const DocumentationSection = ({
           <div className="doc-steps">
             <h3>Step 1 - get the bookmark into your browser</h3>
 
-            {groups && groups.length > 0 ? (
+            {isStandalone ? (
+              <div className="bw-note doc-standalone-note">
+                <p>
+                  <strong>You&rsquo;re using the installed app, which has no bookmarks bar</strong> - so there&rsquo;s nothing
+                  here to drag the bookmark onto. The fill bookmark can only be set up from a normal browser tab, and on
+                  the day it only ever runs in the browser, on the See Tickets page. This is a one-off: once the bookmark is
+                  on your bar it works whether or not the app is installed.
+                </p>
+                <p>Open this page in your browser to set it up:</p>
+                <ul>
+                  <li><strong>Windows / Mac / Linux (Chrome or Edge):</strong> click the <kbd>&#8942;</kbd> menu at the top right of this
+                    app window and choose <em>Open in browser</em> (Edge: <em>Open in Microsoft Edge</em>), then come back to this tab there.</li>
+                  <li><strong>Android (Chrome):</strong> <kbd>&#8942;</kbd> menu &rarr; <em>Open in Chrome</em>. There&rsquo;s no bookmarks
+                    bar on a phone either, but once the bookmark is saved you can run it on the See Tickets page by typing its
+                    name - <strong>{saleBookmarkletTitle(info.folderLabel, year)}</strong> - into the address bar and tapping it.</li>
+                  <li><strong>iPhone / iPad:</strong> open <code>longmanrd.net/buswankers</code> in Safari itself rather than the
+                    home-screen app.</li>
+                </ul>
+                <p>
+                  Or skip the bookmark altogether: the <a href="#groups">Groups tab</a> works fine in here - every registration
+                  number and postcode has a Copy button.
+                </p>
+              </div>
+            ) : groups && groups.length > 0 ? (
               <>
                 <p>
                   <strong>Drag this one bookmark to your bookmarks bar</strong> - that&rsquo;s the whole install. It works
@@ -296,6 +330,10 @@ const DocumentationSection = ({
 
 
 
+            {/* Per-group bookmarks and the folder import all need a bookmarks bar too, so
+                they are hidden in the installed app rather than offered with drag
+                instructions that can't be followed there. */}
+            {!isStandalone && (
             <details className="doc-alt">
               <summary>Prefer a bookmark already set to your own group, or setting this up for someone else&rsquo;s browser? (advanced options)</summary>
               <div className="doc-alt-body">
@@ -350,6 +388,7 @@ const DocumentationSection = ({
                 />
               </div>
             </details>
+            )}
 
             <h3>Step 2 - try it out</h3>
             <p>
@@ -373,8 +412,15 @@ const DocumentationSection = ({
                 You have 10 minutes on that page, so there&rsquo;s no rush, but there&rsquo;s nothing to type either.</li>
             </ol>
             <p className="doc-fallback">
-              No bookmarks bar (on a phone, say)? Open <strong>Show details / copy &amp; paste</strong> under your group in the advanced
-              options above: every registration number and postcode has a Copy button, so you can paste rather than type.
+              On an Android phone? Chrome has no bookmarks bar, but a saved bookmark still runs: on the See Tickets page, type its
+              name - <strong>{saleBookmarkletTitle(info.folderLabel, year)}</strong> - into the address bar and tap it in the
+              suggestions. (Save it from this page in Chrome first, using Bookmark link / Add bookmark, since there&rsquo;s nothing to
+              drag onto.)
+            </p>
+            <p className="doc-fallback">
+              No bookmark at all? Open <strong>Show details / copy &amp; paste</strong> under your group in the advanced
+              options above, or go to the <a href="#groups">Groups tab</a>: every registration number and postcode has a Copy
+              button, so you can paste rather than type.
             </p>
           </div>
         )}
