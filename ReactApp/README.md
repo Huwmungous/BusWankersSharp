@@ -489,13 +489,16 @@ with a token. A single shared Keycloak identity is enough for now.
   under `/buswankers/`), and installs a `fetch` interceptor that attaches the access
   token to every request the page makes. Nothing in `src/api/autofillApi.js` handles
   a token itself.
-- **The API:** UploaderService requires that token on the three write routes -
-  `POST /sheets`, `/generate`, `/ingest` - and checks it server-side. The read routes
-  (`GET /files`, `/files/{name}`, `/files/{name}/groups`, `/running-order`, `/time`)
-  stay anonymous **on purpose**: the AutoFill Options extension's Remote Import URL
-  and the bookmarklets (which run on the ticket seller's own domain) fetch them with
-  no way to sign in. `src/launch/clock.js` deliberately bypasses the token-attaching
-  `fetch` for `/api/time`, so the sale-day clock sync isn't skewed by a token lookup.
+- **The API:** UploaderService requires that token on **every** route - the writes
+  (`POST /sheets`, `/generate`, `/ingest`) and the reads (`GET /files`,
+  `/files/{name}`, `/files/{name}/groups`, `/running-order`, `/time`) - and checks it
+  server-side. `src/launch/clock.js` fetches the token itself *before* starting its
+  timer and sends it on the browser's un-intercepted `fetch`, so the sale-day clock
+  sync isn't skewed by a token lookup.
+- **What no longer works:** anything that can't sign in now gets `401`. The AutoFill
+  Options extension's Remote Import URL (`/buswankers/<name>_autofill.csv`) can't be
+  used any more - import the downloaded file instead. The bookmarklets' live groups
+  fetch fails and they fall back to the data baked into them at build time.
 - **Keycloak side (not in this repo):** the `BusWankers` AppDomain needs a *user*
   client in its realm - a public client using the authorization-code flow with PKCE -
   whose valid redirect URIs include

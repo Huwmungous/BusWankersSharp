@@ -76,6 +76,10 @@ location ~ ^/buswankers/(index\.html|signin/callback|signout/callback|silent-cal
 # because it's API routing, and because this include is the one the deploy
 # script always wires. The filename pattern must agree with
 # AutofillStore.IsSafeFileName.
+# NOTE (2026-09-29): the API now requires a Keycloak token on every route, and
+# the extension can't send one, so this URL answers 401 to it. The rewrite is
+# kept so a token-bearing caller (or a future decision to re-open this one
+# route) needs no nginx change.
 location ~ ^/buswankers/[a-z0-9_]*autofill\.csv$ {
     rewrite ^/buswankers/(.*)$ /api/autofill/files/$1 break;
     proxy_pass http://192.168.0.200:5038;

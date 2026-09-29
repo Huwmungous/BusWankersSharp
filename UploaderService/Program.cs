@@ -16,18 +16,17 @@ using IFGlobal.WebServices;
 //     block is gone from appsettings.json.
 //   - IFLogger ships this service's logs to LoggerWebService like every other
 //     estate web service (UseIFLogger = true) - no manual wiring needed here.
-//   - UseAuthentication is true (2026-09-29): the write endpoints (POST
-//     /sheets, /generate, /ingest) now require a Keycloak access token, issued
+//   - UseAuthentication is true (2026-09-29): EVERY endpoint (POST /sheets,
+//     /generate, /ingest and the GETs /files, /files/{name},
+//     /files/{name}/groups, /running-order, /time) requires a Keycloak access
+//     token, via [Authorize] on the controllers, issued
 //     to a signed-in user of the BusWankers AppDomain's user client and
 //     validated by ServiceFactory's JwtBearer pipeline (issuer, lifetime and
 //     signing key checked; audience "account" or this domain's client). This
 //     replaces the old shared UploadPassword. A single shared Keycloak
-//     identity is enough at this stage. The read endpoints (GET /files,
-//     /files/{name}, /files/{name}/groups, /running-order, /time) are marked
-//     [AllowAnonymous] in the controllers on purpose: the AutoFill Options
-//     extension's Remote Import URL and the bookmarklets - which run on the
-//     ticket seller's own domain, not ours - fetch them with no way of signing
-//     in. ServiceFactory still runs its ConfigWebService/Keycloak bootstrap
+//     identity is enough at this stage. Callers that can't sign in (the
+//     AutoFill Options extension's Remote Import URL, the bookmarklets' live
+//     groups fetch) therefore get 401. ServiceFactory still runs its ConfigWebService/Keycloak bootstrap
 //     for the service's own client regardless (it needs an authenticated
 //     HttpClient to ship logs to LoggerWebService) - see appsettings.json's
 //     "IF" section for the AppDomain this authenticates against, and

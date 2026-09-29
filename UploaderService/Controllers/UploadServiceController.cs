@@ -30,27 +30,29 @@ namespace Autofills.UploaderService.Controllers;
 ///                        running_order.json, which is where the page gets the
 ///                        festival year and the running-order list.
 ///
-/// And two ways out, deliberately anonymous (they're what the AutoFill
-/// Options extension's Remote Import URL and the page's download button hit, and
-/// the old static files under /buswankers/ were public too):
+/// And the read routes, also requiring a signed-in user:
 ///   GET /files             - what's in the store (filename, size, last modified),
 ///                            so the page can mark sales with no file as empty
 ///   GET /files/{filename}  - the file itself
+///   GET /files/{filename}/groups - the groups behind a file (bookmarklet data)
 ///   GET /running-order     - the roster from the last ingest (year + people), or 404
 ///
-/// Auth (2026-09-29, replacing the old shared UploadPassword): the three POST
-/// routes carry [Authorize], so they need a valid Keycloak access token from the
-/// BusWankers AppDomain's realm - the page gets one by signing in on first load
-/// (see ReactApp/src/main.jsx) and attaches it to every request. ServiceFactory's
-/// JwtBearer pipeline does the checking, server-side, so it's a real gate and
-/// not just a hidden form field. A single shared Keycloak identity is enough at
-/// this stage: there's no per-user role check, only "is this a valid signed-in
-/// user". The GET routes are [AllowAnonymous] for the reasons given above - the
-/// files served are the same names and registration numbers the autofill
-/// extension has always fetched without credentials.
+/// Auth (2026-09-29, replacing the old shared UploadPassword): the whole
+/// controller carries a class-level [Authorize], so every route needs a valid
+/// Keycloak access token from the BusWankers AppDomain's realm - the page gets one
+/// by signing in on first load (see ReactApp/src/main.jsx) and its fetch
+/// interceptor attaches it to every request. ServiceFactory's JwtBearer pipeline
+/// does the checking, server-side, so it's a real gate and not just a hidden form
+/// field. A single shared Keycloak identity is enough at this stage: there's no
+/// per-user role check, only "is this a valid signed-in user". Reads were made
+/// protected too (2026-09-29): the files hold names and registration numbers.
+/// Consequence: anything that can't send a token - the AutoFill Options
+/// extension's Remote Import URL, the bookmarklets' live groups fetch - now gets
+/// 401 (the bookmarklets fall back to their baked-in data).
 /// </summary>
 [ApiController]
 [Route("api/autofill")]
+[Authorize]
 public class UploadServiceController : ControllerBase
 {
     private readonly IConfiguration _config;
@@ -68,7 +70,6 @@ public class UploadServiceController : ControllerBase
     }
 
     [HttpPost("sheets")]
-    [Authorize]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Sheets([FromForm] IFormFile? file)
     {
@@ -99,7 +100,6 @@ public class UploadServiceController : ControllerBase
     }
 
     [HttpPost("generate")]
-    [Authorize]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Generate(
         [FromForm] IFormFile? file,
@@ -158,7 +158,6 @@ public class UploadServiceController : ControllerBase
     /// frontend's handling simple). A workbook where nothing ingests is a 400.
     /// </summary>
     [HttpPost("ingest")]
-    [Authorize]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Ingest([FromForm] IFormFile? file, CancellationToken ct)
     {
@@ -364,7 +363,6 @@ public class UploadServiceController : ControllerBase
     /// ingest is what the page shows.
     /// </summary>
     [HttpGet("running-order")]
-    [AllowAnonymous]
     public IActionResult RunningOrder()
     {
         var path = _store.RunningOrderPath;
@@ -377,7 +375,6 @@ public class UploadServiceController : ControllerBase
 
     /// <summary>What's in the store right now - the frontend uses this to mark empty sales.</summary>
     [HttpGet("files")]
-    [AllowAnonymous]
     public IActionResult Files()
     {
         try
@@ -399,7 +396,6 @@ public class UploadServiceController : ControllerBase
     /// freshly ingested file is what the extension gets, not last week's copy.
     /// </summary>
     [HttpGet("files/{filename}")]
-    [AllowAnonymous]
     public IActionResult Download(string filename)
     {
         if (!AutofillStore.IsSafeFileName(filename))
@@ -439,7 +435,6 @@ public class UploadServiceController : ControllerBase
     /// degraded experience, never a broken one.
     /// </summary>
     [HttpGet("files/{filename}/groups")]
-    [AllowAnonymous]
     public IActionResult DownloadGroups(string filename)
     {
         if (!AutofillStore.IsSafeFileName(filename))

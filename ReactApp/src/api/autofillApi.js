@@ -14,9 +14,8 @@ export const API_BASE = '/buswankers-api/api/autofill';
 // Authentication (2026-09-29): the page signs in through Keycloak before it
 // renders (see src/main.jsx), and the fetch interceptor AppInitializer installs
 // attaches the access token to every fetch() below - nothing here handles a
-// token itself. The write route (POST /ingest) needs it; the GET routes are
-// anonymous on the server so the extension and bookmarklets keep working, and
-// simply carry a harmless token when the page calls them.
+// token itself. Every route on the server needs it (the read routes were
+// protected too on 2026-09-29), so a 401 here means the session has expired.
 
 // Created on demand rather than at module load: LoggerService configures itself
 // from the config service the first time it's used, and that is only ready once
@@ -172,8 +171,9 @@ export async function fetchAutofillGroups(filename) {
   return parseAutofillCsv(text);
 }
 
-// Public download URL for a stored autofill file (anonymous on the server - the
-// AutoFill Options extension fetches it with no sign-in).
+// Download URL for a stored autofill file. The server now requires a token for
+// it, so only calls that go through the page's fetch (which attaches one) work;
+// pasting it into the AutoFill Options extension's Remote Import URL gets 401.
 export function downloadUrlFor(filename) {
   return `${API_BASE}/files/${encodeURIComponent(filename)}`;
 }

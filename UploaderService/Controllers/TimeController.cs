@@ -6,9 +6,10 @@ namespace Autofills.UploaderService.Controllers;
 /// <summary>
 /// GET /api/time - NTP-corrected UTC for the page's sale-day launcher.
 ///
-/// Anonymous ([AllowAnonymous]) even though the rest of the service now needs
-/// a Keycloak token for writes: it gives away nothing but the time of day, and
-/// the launcher needs it from every browser on every group member's machine.
+/// Requires a Keycloak token like the rest of the service (2026-09-29): the
+/// launcher lives behind the page's sign-in, and ReactApp/src/launch/clock.js
+/// fetches the token before starting its timer so the extra lookup doesn't
+/// skew the round-trip arithmetic.
 ///
 /// The reply carries TWO server timestamps, both NTP-corrected:
 ///   receivedMs - when this request arrived
@@ -24,6 +25,7 @@ namespace Autofills.UploaderService.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/time")]
+[Authorize]
 public class TimeController : ControllerBase
 {
     private readonly IConfiguration _config;
@@ -36,7 +38,6 @@ public class TimeController : ControllerBase
     }
 
     [HttpGet]
-    [AllowAnonymous]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var receivedLocal = DateTimeOffset.UtcNow;
