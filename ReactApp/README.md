@@ -25,6 +25,14 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
    the other tabs refresh.
+
+   A `Scratchpad` tab (2026-09-18) is never treated as a sale or the roster,
+   whatever it contains - it's Hugh's own notes tab while he's building the
+   workbook, not data to ingest. It joins `Starting Lineup` and `URL` in
+   `Common/ExcelFileHelper.cs`'s `NonSaleSheetNames`, matched trimmed and
+   case-insensitively, so it's skipped even if it happens to have a
+   sale-shaped header row (see `ExcelFileHelperTests.cs`).
+
 2. **Documentation** (`DocumentationSection`) - the landing tab. Pick a sale
    (Coach Tickets, General Sale, Resale - Coach, Resale - General, Demo), see its
    key dates/cost, then choose a fill method from two equal cards (remembered per
@@ -168,18 +176,123 @@ tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
    (`public/favicon.svg`, a bus-and-ticket mark referenced from
    `public/index.html`/`public/manifest.json`) where before there was none -
    `favicon.ico`/`logo192.png`/`logo512.png` were referenced by the
-   Create-React-App template but never actually existed. Browsers generally
-   show the favicon of the page you dragged a link FROM for that bookmark
-   (not the bookmarklet's own, since a `javascript:` URL has no site of its
-   own to fetch one from), so this icon should now show up next to the
-   bookmark for anyone who (re-)creates it from this app's own pages -
-   exactly how bookmarks are always installed here.
+   Create-React-App template but never actually existed. **This only fixes
+   the app's own icon (browser tab, PWA manifest) - it does NOT put an icon
+   on the bookmarks bar.** A `javascript:` bookmarklet never gets a real
+   favicon in Chrome, no matter what icon the page it was dragged from has -
+   this is a long-standing open Chromium limitation
+   (https://issues.chromium.org/issues/40332768), not something the app can
+   influence from the page side. "Coach Filler"/"General Filler" etc. keep
+   Chrome's generic bookmark icon; Hugh was offered a couple of workarounds
+   (a downloadable bookmarks-HTML file with the icon baked in, or a
+   third-party "Bookmark Icon Customizer" extension) and chose to live with
+   the generic icon rather than add either.
+
+
+   **Lead Booker (2026-09-18):** each group has one "Lead Booker" - whoever's
+   account actually does the booking - and the spreadsheet marks that person
+   by colouring their First and/or Last name cell red (`Common/
+   SheetRegistrationReader.cs`'s `ReadGroups`/`BuildGroup`). Nothing about
+   the CSV/JSON format or the frontend changed for this: `GroupFillPanel.jsx`
+   and `GroupsSection.jsx` already labelled slot 0 "Lead Booker" and the rest
+   "#1", "#2"... (and the generated autofill files already filled the site's
+   first registration slot from slot 0) - so the only real gap was that
+   "slot 0" was previously just "whoever's listed first in the spreadsheet",
+   with no link to a specific person. Now, during ingest, whoever's marked
+   red is moved to position 0 within their group and everyone else keeps
+   their existing relative order after that. Reading the colour needs the
+   OpenXML SDK directly (`ExcelFileHelper.DetectLeadBookerRows`) since
+   ExcelDataReader (used for everything else) only ever reads cell values,
+   never formatting - and only works for `.xlsx` uploads, since the old
+   binary `.xls` format isn't read that way at all.
+
+   The upload never fails because of this - Hugh's call (2026-09-18): a
+   group with nobody marked red keeps today's old fallback (first-listed
+   becomes Lead Booker) and a group with more than one red name uses
+   whoever's first in the spreadsheet - but either case, plus a `.xls`
+   upload where colour can't be read at all, is reported as a warning
+   against that sheet in the Update Files results (`IngestResult.Warnings`,
+   shown in amber by `IngestBar.jsx`) so it's easy to notice and fix the
+   spreadsheet before sale morning.
 
 3. **Running Order** (`RunningOrderSection`) - the *Glasto nnnn Running Order*:
-   everyone on the workbook's `Glasto nnnn` roster tab (reg number + name, surname
-   order) as of the last ingest. `nnnn` is the festival year, read from that tab's
-   name, and is what every other "2027"-style mention on the page uses
-   (`src/festival.js` holds the fallback for a store with no roster yet).
+   everyone on the workbook's `Glasto nnnn` roster tab (reg number, name and
+   postcode, surname order) as of the last ingest. `nnnn` is the festival year,
+   read from that tab's name, and is what every other "2027"-style mention on
+   the page uses (`src/festival.js` holds the fallback for a store with no
+   roster yet).
+
+   2026-09-18 the table also carries one column per real sale (`Coach`,
+   `General`, `Coach Resale`, `General Resale` - the same order
+   `Object.entries(SALE_INFO)` uses everywhere else, minus `Demo`: Hugh,
+   2026-09-18, "demo should not appear" - it's a testing-only sale, nobody's
+   actually booked into it, and Documentation/Groups still offer it for
+   testing) showing which group, if any, that person is in for that sale, or
+   a dash once its file has been ingested with nobody in it under that reg
+   number. This needed all four real sales' groups loaded at once - not just
+   whichever one is currently selected on Documentation/Groups - so
+   `RunningOrderSection` now takes the same `storedFiles`/`storeStatus`/
+   `storeError` props those two already get from `BusWankersPage`, and calls
+   `useAutofillGroups` once per real sale (`SALE_KEYS` - `Object.keys
+   (SALE_INFO)` filtered to drop `Demo` - a fixed, known set of keys, so a
+   fixed number of hook calls, same rules as any other hook). Each sale's
+   registration-number -> group-letter lookup is built by the new
+   `buildGroupLookup`/`groupLabelForRegistration` in `src/runningOrder.js`
+   (alongside the existing `buildNameLookup`/`nameForRegistration`), from the
+   exact same parsed-CSV shape those already work with, so there's no second,
+   diverging way of reading an autofill file's groups. The cell shows the RAW
+   group letter (not sale-qualified) since the column header already says
+   which sale.
+
+   Also since 2026-09-18: a `Postcode` column, straight after `Name`. It was
+   first wired up to read a `Postcode` heading on the `Glasto nnnn` roster
+   sheet itself (`RosterReader.Read`, carried through `RosterEntry` ->
+   `RunningOrderEntry` -> the `GET /running-order` JSON as `postCode` - see
+   `Common.Tests/RosterReaderTests.cs`), on the strength of a comment in
+   `Common/ExcelFileHelper.cs` saying the roster sheet has that column too.
+   In practice it doesn't - Hugh confirmed the live column rendered blank for
+   everyone - so as of 2026-09-19 the Postcode column is instead built from
+   the four real sales' own group files, which reliably carry it. This is
+   the same data `useAutofillGroups` already loads for the per-sale group
+   columns, so no extra fetch: `buildPostcodeLookup`/
+   `postcodeForRegistration` in `src/runningOrder.js` mirror
+   `buildGroupLookup`/`groupLabelForRegistration` exactly, just reading
+   `postCode` instead of the group letter, into a
+   `postcodeLookupsBySale` map alongside the existing `lookupsBySale`.
+
+   Because the same person's postcode is typed independently into each sale
+   they're in, the sales can disagree (a typo, or someone who moved) - so
+   `combinePostcodes` compares every sale's value for that person, after
+   normalising away whitespace/case (`normalisePostcodeValue`, the same
+   convention `bookmarklet.js`'s `normalisePostcode` uses), and:
+   - no sale has a postcode on file: the cell shows the usual dash.
+   - every sale that has one agrees: the cell shows it plainly.
+   - two sales disagree: the cell shows a bold **⚠ conflict** warning
+     (`.running-order-postcode-conflict`) instead of silently picking one,
+     with a tooltip (title attribute) listing each source sale and its
+     value so the clash can be tracked down and fixed at the source.
+
+   Also since 2026-09-18: each source value is separately checked against
+   `isValidUkPostcode` (`src/runningOrder.js`) - a shape check (1-2
+   letters, 1-2 digits, then a digit and two letters, or the historical
+   `GIR 0AA`), not a real deliverability lookup, so it catches an obvious
+   typo (a name pasted into the wrong cell, a digit swapped for a letter,
+   a postcode missing its inward part) without knowing which area codes
+   really exist. A single agreed value that fails the check renders with
+   the amber **"⚠"**-suffixed `.running-order-postcode-invalid` style
+   instead of plain text, tooltip "Doesn't look like a valid UK postcode";
+   a conflict where one or more of the clashing values is also malformed
+   still shows the conflict warning, with "(invalid format)" appended
+   against the relevant source(s) in the tooltip rather than as a second,
+   separate warning.
+
+
+   The roster-sheet `RosterReader`/`RunningOrderEntry` postcode plumbing
+   from 2026-09-18 is left in place (harmless, and correct if that sheet
+   ever does get a working Postcode column) but the frontend no longer
+   reads `postCode` off the `/running-order` entries themselves.
+
+
 4. **Test Form** (`TestSection`) - a mockup of the Glastonbury registration form with
    real `registrations_N__RegistrationId` / `registrations_N__PostCode` fields (up to
    6 people per group, matching `Common/BusWankers.cs`'s `DEFAULT_MAX_IN_A_GROUP`) so

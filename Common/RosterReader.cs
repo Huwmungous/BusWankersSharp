@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace Autofills.Common
 {
     /// <summary>One person on the master roster ("Glasto nnnn") sheet.</summary>
-    public record RosterEntry(string RegistrationId, string FirstName, string LastName)
+    public record RosterEntry(string RegistrationId, string FirstName, string LastName, string PostCode = "")
     {
         public string DisplayName =>
             string.Join(" ", new[] { FirstName, LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -30,9 +30,13 @@ namespace Autofills.Common
     /// Columns are found by heading name on row 0, never by position: "Reg
     /// Number" is required; names come from "First" + "Last" (also accepting
     /// "First Name"/"Forename" and "Last Name"/"Surname"), or a single "Name"
-    /// column as a fallback. Rows with no Reg Number are skipped, and the result
-    /// is sorted by surname then forename so the page can show a name-ordered
-    /// running order.
+    /// column as a fallback. A "Postcode" heading (case-insensitive, same as
+    /// the sale sheets - see ExcelFileHelper.IsSaleSheet) is optional: read
+    /// when present, left blank per person when the roster sheet doesn't
+    /// have one (2026-09-18, adding postcodes to the Running Order tab).
+    /// Rows with no Reg Number are skipped, and the result is sorted by
+    /// surname then forename so the page can show a name-ordered running
+    /// order.
     /// </summary>
     public static class RosterReader
     {
@@ -67,7 +71,7 @@ namespace Autofills.Common
             if (sheet.Rows.Count == 0)
                 throw new EmptySheetException($"'{sheetName}' has no rows at all - not even a heading row.");
 
-            int regCol = -1, firstCol = -1, lastCol = -1, nameCol = -1;
+            int regCol = -1, firstCol = -1, lastCol = -1, nameCol = -1, postCol = -1;
             int? yearFromHeading = null;
 
             for (int c = 0; c < sheet.Columns.Count; c++)
@@ -84,6 +88,8 @@ namespace Autofills.Common
                     lastCol = c;
                 else if (string.Equals(heading, "Name", StringComparison.OrdinalIgnoreCase))
                     nameCol = c;
+                else if (string.Equals(heading, "Postcode", StringComparison.OrdinalIgnoreCase))
+                    postCol = c;
                 else
                 {
                     var m = HeadingYear.Match(heading);
@@ -123,7 +129,9 @@ namespace Autofills.Common
                     (first, last) = SplitName(CellToString(sheet.Rows[r][nameCol]));
                 }
 
-                entries.Add(new RosterEntry(reg, first, last));
+                var postcode = postCol >= 0 ? CellToString(sheet.Rows[r][postCol]) : string.Empty;
+
+                entries.Add(new RosterEntry(reg, first, last, postcode));
             }
 
             if (entries.Count == 0)

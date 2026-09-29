@@ -102,9 +102,10 @@ export async function ingestWorkbook(file, password) {
 }
 
 // GET /running-order -> { year, sheet, generatedAt, entries: [{ regNumber,
-// firstName, lastName, name }] } from the last ingested roster sheet, or null
-// when nothing has been ingested yet (the server answers 404 for that, which
-// is a normal state rather than an error).
+// firstName, lastName, name, postCode }] } from the last ingested roster
+// sheet, or null when nothing has been ingested yet (the server answers 404
+// for that, which is a normal state rather than an error). postCode is ''
+// when the roster sheet has no 'Postcode' column (2026-09-18).
 export async function fetchRunningOrder() {
   const response = await fetch(`${API_BASE}/running-order`, { cache: 'no-store' });
   if (response.status === 404) return null;

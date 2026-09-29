@@ -28,6 +28,32 @@ location /buswankers-api/ {
     client_max_body_size 20m;
 }
 
+# The SPA entry point must never be cached. CRA's JS/CSS bundles carry a
+# content hash in their names, so those can be cached forever - but the
+# index.html that points at them is served by the plain /buswankers/ location
+# with no Cache-Control at all, and browsers then cache it heuristically (10%
+# of its age). Result on 2026-09-16: after a deploy, Hugh's tab kept running
+# a two-releases-old bundle whose dropdown still looked for bw_autofill.csv,
+# and reported every sale "(empty)" while the store plainly had the files. A
+# regex location wins over the inline prefix block, so this takes over just
+# "/buswankers/" and "/buswankers/index.html" and adds the no-cache headers;
+# every other asset still goes through the prefix block untouched. Same
+# rule deploy-breaktackle-frontend.sh applies to the main RozeBowl app.
+#
+# root + try_files, NOT `alias .../index.html`: for the bare "/buswankers/"
+# request the URI ends in "/", so nginx hands it to the index module, which
+# appended "index.html" to the aliased FILE path and failed with
+# ".../index.htmlindex.html is not a directory" -> HTTP 500 on the landing
+# page (2026-09-22). try_files with an explicit file serves it directly and
+# never reaches the index module; the MIME type comes from the .html name.
+location ~ ^/buswankers/(index\.html)?$ {
+    root /srv/BusWankersSharp/www;
+    try_files /buswankers/index.html =404;
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    add_header Pragma "no-cache";
+    add_header Expires "0";
+}
+
 # The autofill files themselves are no longer static assets in the frontend
 # build - they're ingested into UploaderService's AutofillStore (via the upload
 # bar on the page) and served back by GET /api/autofill/files/{filename}. This

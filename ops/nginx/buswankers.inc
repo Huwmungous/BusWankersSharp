@@ -17,10 +17,10 @@
 # The trailing slash on both the location and alias matters - dropping it
 # breaks relative asset URLs under /buswankers/.
 #
-# index.html isn't given its own no-cache rule here (kept simple, matching
-# the existing sibling-app block) - if stale deploys ever show up in a
-# browser, add one the same way deploy-breaktackle-frontend.sh documents for
-# the main RozeBowl app.
+# index.html's no-cache rule lives in buswankers-api.inc (a regex location
+# for "/buswankers/" and "/buswankers/index.html"), because that include is
+# the one the deploy script always wires - stale-deploy symptoms showed up
+# on 2026-09-16 exactly as the old note here predicted they might.
 #
 # The /buswankers/<name>_autofill.csv rewrite onto the API lives in
 # buswankers-api.inc, not here - see the note there.

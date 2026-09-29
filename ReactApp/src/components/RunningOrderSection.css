@@ -80,3 +80,43 @@
   font-family: monospace;
   white-space: nowrap;
 }
+
+.running-order .running-order-postcode {
+  font-family: monospace;
+  white-space: nowrap;
+  color: #666;
+}
+
+.running-order .running-order-postcode-conflict {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+  color: #a94442;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.running-order .running-order-postcode-invalid {
+  color: #8a6d3b;
+  cursor: help;
+  white-space: nowrap;
+}
+
+
+
+.running-order .running-order-group-col {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.running-order .running-order-group-cell {
+  text-align: center;
+  font-family: monospace;
+  font-weight: bold;
+  color: #444;
+}
+
+.running-order .running-order-group-empty {
+  font-family: Arial, sans-serif;
+  font-weight: normal;
+  color: #ccc;
+}

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,6 +9,14 @@
   <ItemGroup>
     <PackageReference Include="ExcelDataReader" Version="3.6.0" />
     <PackageReference Include="ExcelDataReader.DataSet" Version="3.6.0" />
+    <!-- ExcelDataReader (above) only ever reads cell VALUES - it has no API
+         for cell formatting/styling. The Lead Booker feature (2026-09-18)
+         needs to know a cell's font COLOUR (a red name marks the group's
+         Lead Booker - see SheetRegistrationReader), so ExcelFileHelper also
+         reads the raw .xlsx package directly with the official OpenXML SDK
+         for that one thing. -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.0" />
   </ItemGroup>
+
 
 </Project>

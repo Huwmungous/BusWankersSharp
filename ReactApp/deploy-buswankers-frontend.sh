@@ -187,6 +187,16 @@ echo -e "${BLUE}>>> Phase 3: Deploy to $REMOTE${NC}"
 STAGING="/tmp/bw-frontend-deploy.$$"
 NGINX_STAGING="/tmp/bw-frontend-nginx.$$"
 
+# Best-effort remote cleanup on any exit (normal completion, a failed rsync
+# push, or a `set -e` abort) — see deploy-breaktackle-frontend.sh for why: a
+# failed push previously left a partial staging dir on holly forever, with
+# nothing to reclaim it, and every retry added another one. Idempotent:
+# harmless if the activation step below already removed these itself.
+cleanup_staging() {
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" "rm -rf '$STAGING' '$NGINX_STAGING'" 2>/dev/null || true
+}
+trap cleanup_staging EXIT
+
 # 1. Push the build to a staging dir on holly (as $DEPLOY_USER, no sudo needed).
 echo "    Pushing build/ -> $REMOTE:$STAGING ..."
 rsync -a --delete -e "ssh -o BatchMode=yes" "build/" "$REMOTE:$STAGING/"
@@ -352,6 +362,22 @@ else
     echo -e "${RED}[ERROR] $VERIFY_URL -> HTTP $HCODE - the API is not reachable through holly's nginx.${NC}" >&2
     exit 1
 fi
+
+# The landing page itself. A healthy API says nothing about the static side:
+# on 2026-09-22 /buswankers-api/Health was 200 while GET /buswankers/ was a
+# 500 (the no-cache index.html location aliasing a file into the index
+# module), and the deploy daemon reported OK. Probe both the bare directory
+# URL a browser actually requests and the explicit index.html.
+PAGE_BASE="${BW_PAGE_URL:-https://longmanrd.net/buswankers/}"
+for PAGE_URL in "$PAGE_BASE" "${PAGE_BASE}index.html"; do
+    PCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$PAGE_URL" 2>/dev/null || echo "000")
+    if [ "$PCODE" = "200" ]; then
+        echo -e "${GREEN}[OK] $PAGE_URL -> 200${NC}"
+    else
+        echo -e "${RED}[ERROR] $PAGE_URL -> HTTP $PCODE - the frontend is not being served by holly's nginx (check /var/log/nginx/error.log there).${NC}" >&2
+        exit 1
+    fi
+done
 echo ""
 
 echo -e "${GREEN}[OK] Frontend deployed to holly${NC}"

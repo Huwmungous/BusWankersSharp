@@ -5,11 +5,15 @@
     <!-- favicon.svg is the app's real icon (2026-09-18) - favicon.ico/logo192.png/
          logo512.png were referenced here by the original Create-React-App
          template but never actually existed in public/, so every browser was
-         falling back to a generic icon. Browsers show a bookmark's icon from
-         the favicon of the page you dragged the link FROM (not the
-         bookmarklet's own javascript: URL, which has no site of its own to
-         fetch one from), so this is also what makes the "<Sale> Filler"
-         bookmark show a proper icon in the bookmarks bar. -->
+         falling back to a generic icon. This gives the app itself (the
+         browser tab, the PWA manifest) a proper icon. It does NOT reach the
+         bookmarks bar: a javascript: bookmarklet never gets a real favicon in
+         Chrome regardless of what icon the page it was dragged from has -
+         see https://issues.chromium.org/issues/40332768, a long-standing
+         open Chromium request for exactly this. Bookmarklet entries keep
+         Chrome's generic bookmark icon; there is no supported way from the
+         page side to change that. -->
+
     <link rel="icon" href="%PUBLIC_URL%/favicon.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#3b1f6b" />
