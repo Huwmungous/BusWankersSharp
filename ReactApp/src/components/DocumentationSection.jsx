@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import AutofillUpdateNotice from './AutofillUpdateNotice';
 import ExtensionInstructions from './ExtensionInstructions';
 import GroupFillPanel from './GroupFillPanel';
 import SaleBookmarklet from './SaleBookmarklet';
@@ -8,6 +9,7 @@ import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
 import { useIsStandalone } from '../displayMode';
+import { updateStateFor, useImportedVersions } from '../importedVersions';
 import { buildNameLookup } from '../runningOrder';
 import './DocumentationSection.css';
 
@@ -48,8 +50,18 @@ import './DocumentationSection.css';
 // The chosen method is remembered per browser (localStorage) so someone who
 // picked a different route lands on their own instructions next time.
 //
-// storedFiles: Map of filename -> { filename, size, lastModified } from the
-// backend's store (see BusWankersPage). A sale whose filename isn't in it has
+// Out-of-date check (2026-09-29): the extension route's real weakness is a
+// stale import, so on the extension route the page also remembers which
+// version of each sale's file this browser last downloaded (or was told was
+// imported - see ../importedVersions.js) and shows a banner under the
+// dropdown (AutofillUpdateNotice) when the server holds something newer. It
+// re-checks the server when the dropdown changes (onRecheckFiles), and the
+// page itself re-checks when the tab comes back into view (BusWankersPage).
+// It can't push the new file into the extension - that's a third-party
+// extension's private storage - so the fix is put one click away instead.
+//
+// storedFiles: Map of filename -> { filename, size, lastModified, hash } from
+// the backend's store (see BusWankersPage). A sale whose filename isn't in it has
 // nothing ingested yet - the dropdown says so, the groups panel explains, and
 // the download button is disabled. While the store is still loading (or
 // unreachable) nothing is known, so every sale is treated as empty rather
@@ -108,12 +120,14 @@ const DocumentationSection = ({
   saleType = 'Coach',
   onSaleTypeChange = () => {},
   runningOrder = null,
+  onRecheckFiles = () => {},
 }) => {
   const [method, setMethod] = useState(readSavedMethod); // extension | bookmark | copypaste
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
   const nameLookup = useMemo(() => buildNameLookup(runningOrder), [runningOrder]);
   const isStandalone = useIsStandalone(); // running as the installed app (no bookmarks bar)
+  const { taken, markTaken } = useImportedVersions(); // which file versions this browser last took
 
   const info = SALE_INFO[saleType];
   const {
@@ -124,6 +138,12 @@ const DocumentationSection = ({
     stored,
   } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
   const remoteImportUrl = `https://longmanrd.net/buswankers/${info.filename}`;
+
+  // Is what this browser last took for the chosen sale still what the server
+  // holds? ('empty' | 'never' | 'current' | 'stale' - see importedVersions.js.)
+  // Derived, not stored, so it moves the instant the listing or the record
+  // does. `stored` is declared by the useAutofillGroups call above.
+  const updateState = updateStateFor(stored, taken[info.filename]);
 
   // This sale's live group-data URL (see groupsUrlFor in api/autofillApi.js
   // and DownloadGroups on the backend) - baked into every bookmarklet
@@ -138,12 +158,26 @@ const DocumentationSection = ({
     setDownloadStatus('working');
     setDownloadError('');
     try {
-      await downloadStoredFile(info.filename);
+      const { hash } = await downloadStoredFile(info.filename);
+      // Record the version that was actually served (the header), falling
+      // back to the listing's own values if the server didn't send one. Then
+      // look again at the server, so a listing that was a moment behind the
+      // file just downloaded catches up and the banner settles on "current".
+      markTaken(info.filename, { ...stored, hash: hash || (stored && stored.hash) || '' });
+      onRecheckFiles();
       setDownloadStatus('idle');
     } catch (err) {
       setDownloadStatus('error');
       setDownloadError(err.message || 'Download failed.');
     }
+  };
+
+  // "I've imported the current file" - for the Remote Import route (and for
+  // anyone who downloaded it another way), where the page never sees the
+  // transfer. Records the version the listing shows right now.
+  const handleMarkImported = () => {
+    if (isEmpty) return;
+    markTaken(info.filename, stored);
   };
 
   // Every group's bookmark for this sale in one importable bookmarks file, as
@@ -184,7 +218,14 @@ const DocumentationSection = ({
               id="saleType"
               className="form-input"
               value={saleType}
-              onChange={(e) => { onSaleTypeChange(e.target.value); setDownloadStatus('idle'); setDownloadError(''); }}
+              onChange={(e) => {
+                onSaleTypeChange(e.target.value);
+                setDownloadStatus('idle');
+                setDownloadError('');
+                // Check the server now, so the banner reflects the file as it
+                // is at the moment of choosing, not as it was at page load.
+                onRecheckFiles();
+              }}
             >
               {Object.entries(SALE_INFO).map(([key, tab]) => {
                 const f = storedFiles.get(tab.filename);
@@ -203,6 +244,18 @@ const DocumentationSection = ({
             {storeStatus === 'ready' && isEmpty && 'Nothing has been loaded for this sale yet - the organiser needs to upload the spreadsheet on the Update Files tab.'}
             {storeStatus === 'ready' && !isEmpty && `Groups last updated ${formatWhen(stored.lastModified)}`}
           </p>
+          {method === 'extension' && storeStatus === 'ready' && (
+            <AutofillUpdateNotice
+              info={info}
+              file={stored}
+              updateState={updateState}
+              remoteImportUrl={remoteImportUrl}
+              downloadStatus={downloadStatus}
+              downloadError={downloadError}
+              onDownload={handleDownload}
+              onMarkImported={handleMarkImported}
+            />
+          )}
         </div>
 
         <div className="key-dates">

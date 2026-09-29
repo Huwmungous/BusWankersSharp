@@ -1,0 +1,76 @@
+/* The out-of-date banner under the sale dropdown (AutofillUpdateNotice.jsx). */
+.update-notice {
+  margin: 12px 0 0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.9em;
+}
+
+.update-notice-current {
+  background-color: #eaf6ec;
+  border: 1px solid #8fcf9c;
+  color: #14532d;
+}
+
+.update-notice-stale {
+  background-color: #fff4e5;
+  border: 1px solid #f0b429;
+  color: #5c3d00;
+}
+
+.update-notice-never {
+  background-color: #eef5fc;
+  border: 1px solid #9cc2e5;
+  color: #0b3a66;
+}
+
+.update-notice p {
+  margin: 0;
+}
+
+.update-notice .update-notice-heading {
+  font-weight: 600;
+}
+
+.update-notice .update-notice-body,
+.update-notice .update-notice-remote,
+.update-notice .update-notice-error {
+  margin-top: 6px;
+}
+
+.update-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.update-notice-button {
+  padding: 8px 16px;
+  border: 1px solid #0066cc;
+  border-radius: 4px;
+  background-color: #0066cc;
+  color: #fff;
+  font-size: 0.95em;
+  cursor: pointer;
+}
+
+.update-notice-button:disabled {
+  background-color: #99bbdd;
+  border-color: #99bbdd;
+  cursor: not-allowed;
+}
+
+.update-notice-button.update-notice-secondary {
+  background-color: #fff;
+  color: #0066cc;
+}
+
+.update-notice .update-notice-remote {
+  font-size: 0.85em;
+  word-break: break-all;
+}
+
+.update-notice .update-notice-error {
+  color: #a4231b;
+}
