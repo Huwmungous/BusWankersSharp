@@ -316,3 +316,91 @@
 .launch .launch-how li {
   margin: 4px 0;
 }
+
+/* ---- Open real browsers (the native helper / Android links) ---------------- */
+
+.launch .launch-helper {
+  margin-top: 16px;
+}
+
+.launch .launch-helper .launch-blurb {
+  margin-bottom: 10px;
+}
+
+.launch .launch-helper .launch-notice {
+  margin-bottom: 12px;
+}
+
+.launch .launch-helper-steps {
+  margin: 0;
+  padding-left: 22px;
+  color: #444;
+  font-size: 0.92em;
+}
+
+.launch .launch-helper-steps > li {
+  margin: 0 0 12px;
+}
+
+.launch .launch-helper-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.launch .launch-helper-buttons .launch-btn {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
+.launch .launch-helper-others {
+  margin-top: 6px;
+  font-size: 0.9em;
+}
+
+.launch .launch-helper-others summary {
+  cursor: pointer;
+  color: #0066cc;
+}
+
+.launch .launch-copybox {
+  margin: 6px 0 0;
+}
+
+.launch .launch-copybox-label {
+  font-size: 0.85em;
+  color: #666;
+}
+
+.launch .launch-copybox .launch-link-row {
+  flex-wrap: nowrap;
+  align-items: stretch;
+  margin: 2px 0;
+}
+
+.launch .launch-copybox .launch-link {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.launch .launch-copybox .launch-btn {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+}
+
+.launch .launch-helper .launch-field-hint,
+.launch .launch-helper .launch-field-error {
+  display: block;
+  margin-top: 4px;
+}
+
+.launch .launch-helper-steps .launch-btn:not(.launch-btn-secondary) {
+  font-weight: bold;
+}
+
+.launch .launch-helper .launch-nb {
+  margin-top: 12px;
+}

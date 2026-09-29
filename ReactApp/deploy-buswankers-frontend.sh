@@ -30,6 +30,9 @@ set -e
 # Prerequisites:
 #   - Node.js, npm and rsync on this box; this repo cloned to $BW_REPO and the
 #     Infoforum repo (if-web-common, if-web-common-react) cloned to $IF_REPO
+#   - (optional) the .NET SDK and zip or python3, to publish the sale-day launcher
+#     helper downloads into build/launcher/ (see Phase 2); without them the site
+#     still deploys and the Launcher tab reports the downloads as missing
 #   - passwordless ssh <this box> -> holly for $DEPLOY_USER (see RozeBowl
 #     estate notes section 6.5 for the pattern; same key works here)
 #   - NOPASSWD sudo for $DEPLOY_USER on holly (the remote activate step
@@ -222,6 +225,20 @@ if [ "$DO_BUILD" = true ]; then
         npm run rebuild
     fi
     echo -e "${GREEN}[OK] Frontend built${NC}"
+
+    # The sale-day launcher helper (LauncherHelper/): the downloads the Launcher tab
+    # offers, published as build/launcher/*.zip so they ride the same rsync. This must
+    # come AFTER the Vite build, which empties build/. Best effort by design: a missing
+    # dotnet SDK or a NuGet hiccup must never stop the site itself deploying, and the
+    # Launcher tab notices a missing download and says so rather than serving a bad file.
+    echo "    Publishing the launcher helper downloads (best effort)..."
+    if ! command -v dotnet &> /dev/null; then
+        echo -e "${YELLOW}[WARN] dotnet not found - launcher helper downloads NOT published${NC}"
+    elif bash "$BW_REPO/LauncherHelper/publish-launcher.sh" "$FRONTEND_DIR/build/launcher"; then
+        echo -e "${GREEN}[OK] Launcher helper downloads published${NC}"
+    else
+        echo -e "${YELLOW}[WARN] Some launcher helper downloads failed to publish - the site deploys regardless; see above${NC}"
+    fi
 else
     echo -e "${YELLOW}>>> Phase 2: Build (skipped) - deploying existing build/${NC}"
 fi
