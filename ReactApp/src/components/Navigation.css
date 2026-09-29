@@ -34,6 +34,9 @@
 }
 
 .nav-menu {
+  /* Positioned so Navigation.jsx can centre the active tab in the scrolling
+     strip using the tab's offsetLeft. */
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   list-style: none;
@@ -90,7 +93,11 @@
   background-color: #1ebe5b;
 }
 
-@media (max-width: 768px) {
+/* Tablet and phone: logo on its own centred row, the tabs below it in ONE
+   row. Seven tabs never fit a phone, so rather than wrapping into several
+   rows (which breaks the "attached tab" look) the strip scrolls sideways;
+   Navigation.jsx keeps the active tab centred in it. */
+@media (max-width: 1024px) {
   .nav-container {
     flex-direction: column;
     align-items: stretch;
@@ -103,18 +110,64 @@
   }
 
   .nav-menu {
-    justify-content: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-menu::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
+    flex: 0 0 auto;
     margin: 4px 2px 0;
   }
 
   .nav-link {
-    padding: 8px 12px;
+    padding: 10px 14px;
+    white-space: nowrap;
   }
 
   .nav-item-whatsapp {
     margin-left: 8px;
+  }
+
+  /* Auto margins on the ends centre the strip when it fits and let it scroll
+     from the left edge when it doesn't (justify-content: center would clip
+     the first tab out of reach). */
+  .nav-item:first-child {
+    margin-left: auto;
+  }
+
+  .nav-item:last-child {
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-logo {
+    font-size: 1.25rem;
+  }
+
+  .nav-logo-image {
+    height: 32px;
+    width: 32px;
+  }
+
+  .nav-link {
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+}
+
+/* Touch screens: 44px-high tabs. */
+@media (pointer: coarse) {
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    box-sizing: border-box;
   }
 }

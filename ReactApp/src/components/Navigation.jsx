@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { TABS, useActiveTab } from '../tabs';
 import { WHATSAPP_GROUP_URL } from '../links';
 import InstallPrompt from './InstallPrompt';
@@ -11,11 +11,24 @@ import './Navigation.css';
 // shortcut sits at the far end, and only when a link is configured.
 const Navigation = () => {
   const [activeTab, selectTab] = useActiveTab();
+  const menuRef = useRef(null);
 
   const onTabClick = (e, id) => {
     e.preventDefault();
     selectTab(id);
   };
+
+  // On tablets and phones the tabs are one horizontally scrolling row, so keep
+  // the active tab centred in it (including when a tab is switched by an
+  // in-page link or the URL hash). This scrolls the strip itself rather than
+  // using scrollIntoView, which would also drag the page up to the nav bar.
+  useEffect(() => {
+    const menu = menuRef.current;
+    const active = menu && menu.querySelector('.nav-link-active');
+    const item = active && active.parentElement;
+    if (!menu || !item) return;
+    menu.scrollLeft = Math.max(0, item.offsetLeft - (menu.clientWidth - item.offsetWidth) / 2);
+  }, [activeTab]);
 
   return (
     <>
@@ -26,7 +39,7 @@ const Navigation = () => {
             <img src={`${process.env.PUBLIC_URL}/nav-logo.png`} alt="" className="nav-logo-image" />
             Bus Wankers
           </a>
-          <ul className="nav-menu" role="tablist">
+          <ul className="nav-menu" role="tablist" ref={menuRef}>
             {TABS.map((tab) => {
               const active = tab.id === activeTab;
               return (
