@@ -120,10 +120,43 @@ export async function fetchRunningOrder() {
   return { ...body, entries: Array.isArray(body.entries) ? body.entries : [] };
 }
 
+// Departure point per group (2026-09-29), read from the groups sidecar that
+// the bookmarklet also uses (GET /files/{filename}/groups) rather than the
+// autofill CSV - the CSV is the extension's import file and has no field for
+// it (the registration form doesn't either; coach travel is chosen after the
+// purchase). Resolves to { byLabel, byCode } Maps of lower-cased group label /
+// profile code -> departure text, or two empty Maps if the sidecar is missing
+// (a sale ingested before this existed, until it is re-ingested), unreachable
+// or malformed. Best-effort by design: no departure is a smaller loss than
+// the groups themselves failing to load, so nothing here ever throws.
+async function fetchGroupDepartures(filename) {
+  const byLabel = new Map();
+  const byCode = new Map();
+  try {
+    const response = await fetch(`${API_BASE}/files/${encodeURIComponent(filename)}/groups`, { cache: 'no-store' });
+    if (!response.ok) {
+      console.debug('[departure] groups sidecar not available for', filename, response.status);
+      return { byLabel, byCode };
+    }
+    const body = await response.json();
+    for (const g of (body && Array.isArray(body.groups) ? body.groups : [])) {
+      const departure = typeof g.departure === 'string' ? g.departure.trim() : '';
+      if (!departure) continue;
+      if (g.label) byLabel.set(String(g.label).toLowerCase(), departure);
+      if (g.code) byCode.set(String(g.code).toLowerCase(), departure);
+    }
+    console.debug('[departure] loaded for', filename, { withDeparture: byLabel.size });
+  } catch (err) {
+    console.debug('[departure] could not load for', filename, err && err.message);
+  }
+  return { byLabel, byCode };
+}
+
 // Fetch a stored autofill file and parse it into its groups (see
 // src/bookmarklet.js) - what the Documentation tab builds the per-group
 // bookmarklets and copy/paste tables from. Same public route the Download
-// button uses; null if the file isn't in the store.
+// button uses; null if the file isn't in the store. Each group also carries
+// `departure` ('' when it has none - see fetchGroupDepartures).
 export async function fetchAutofillGroups(filename) {
   const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
   if (response.status === 404) return null;
@@ -131,7 +164,13 @@ export async function fetchAutofillGroups(filename) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
   const text = await response.text();
-  return parseAutofillCsv(text);
+  const groups = parseAutofillCsv(text);
+
+  const { byLabel, byCode } = await fetchGroupDepartures(filename);
+  return groups.map((g) => ({
+    ...g,
+    departure: byLabel.get(String(g.label).toLowerCase()) || byCode.get(String(g.code).toLowerCase()) || '',
+  }));
 }
 
 // Public download URL for a stored autofill file (no password needed).

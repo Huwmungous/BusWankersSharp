@@ -55,6 +55,9 @@ const GroupRow = ({ group, nameLookup, saleFolderLabel }) => {
         <div className="groups-group-title">
           <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="groups-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
+          {group.departure && (
+            <span className="groups-group-departure">Departs from <strong>{group.departure}</strong></span>
+          )}
         </div>
         <CopyGroupButton group={group} nameLookup={nameLookup} />
       </div>

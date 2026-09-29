@@ -16,8 +16,16 @@ namespace Autofills.Common
         public EmptySheetException(string message) : base(message) { }
     }
 
-    /// <summary>One group of registrants, as found on (or sliced from) a sheet.</summary>
-    public record RegistrationGroup(string GroupLabel, List<Registrant> Members);
+    /// <summary>
+    /// One group of registrants, as found on (or sliced from) a sheet.
+    /// Departure (2026-09-29) is where the GROUP leaves from (the Coach sheet's
+    /// "Depart" column, e.g. which of the coach departure points they will use).
+    /// It belongs to the group, not to any one person - on the sheet it is
+    /// repeated on every member's row, so it is resolved once per group here
+    /// (see ResolveDeparture) and never carried on Registrant. Empty when the
+    /// sheet has no such column (the General sales don't) or it is blank.
+    /// </summary>
+    public record RegistrationGroup(string GroupLabel, List<Registrant> Members, string Departure = "");
 
     /// <summary>
     /// Turns a raw ExcelDataReader DataTable (no header-row inference - rows/columns
@@ -42,6 +50,17 @@ namespace Autofills.Common
     /// </summary>
     public static class SheetRegistrationReader
     {
+        /// <summary>
+        /// Heading spellings accepted for the departure column (case-insensitive).
+        /// The Coach sheet calls it "Depart"; the others are tolerated in case
+        /// it is ever retitled. Optional - a sheet without one just has no
+        /// departure on its groups.
+        /// </summary>
+        private static readonly HashSet<string> DepartureHeaders = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Depart", "Departs", "Departure", "Departure Point", "Departure Location",
+        };
+
         /// <summary>
         /// Same as ReadGroups(sheet, maxInAGroup) below, plus the Lead Booker
         /// concept (2026-09-18): each group has one person marked as its
@@ -71,7 +90,7 @@ namespace Autofills.Common
         public static (List<RegistrationGroup> Groups, List<string> Warnings) ReadGroups(
             DataTable sheet, int maxInAGroup, IReadOnlySet<int>? leadBookerRows = null)
         {
-            var (headerRow, groupCol, regCol, postcodeCol) = FindHeader(sheet);
+            var (headerRow, groupCol, regCol, postcodeCol, departureCol) = FindHeader(sheet);
 
             if (headerRow < 0)
                 throw new InvalidOperationException(
@@ -82,7 +101,7 @@ namespace Autofills.Common
             if (!detectionRan)
                 warnings.Add("Lead Booker colours can only be read from .xlsx files, so groups on this sheet are ordered exactly as listed in the spreadsheet.");
 
-            var ordered = new List<(string? GroupLabel, Registrant Member, bool IsLead)>();
+            var ordered = new List<(string? GroupLabel, Registrant Member, bool IsLead, string Departure)>();
 
             for (int r = headerRow + 1; r < sheet.Rows.Count; r++)
             {
@@ -95,8 +114,10 @@ namespace Autofills.Common
                 if (string.IsNullOrEmpty(groupVal))
                     groupVal = null;
 
+                var departVal = departureCol >= 0 ? CellToString(sheet.Rows[r][departureCol]) : string.Empty;
+
                 bool isLead = leadBookerRows != null && leadBookerRows.Contains(r);
-                ordered.Add((groupVal, new Registrant(regVal, postVal), isLead));
+                ordered.Add((groupVal, new Registrant(regVal, postVal), isLead, departVal));
             }
 
             if (ordered.Count == 0)
@@ -108,11 +129,11 @@ namespace Autofills.Common
 
             if (anyLabelled)
             {
-                var byLabel = new Dictionary<string, List<(Registrant Member, bool IsLead)>>();
+                var byLabel = new Dictionary<string, List<(Registrant Member, bool IsLead, string Departure)>>();
                 var labelOrder = new List<string>();
                 int syntheticIndex = 0;
 
-                foreach (var (label, member, isLead) in ordered)
+                foreach (var (label, member, isLead, departure) in ordered)
                 {
                     // An unlabelled row mixed in with labelled ones gets its own
                     // singleton group rather than being folded into whichever
@@ -120,11 +141,11 @@ namespace Autofills.Common
                     var key = label ?? $"(unlabelled {++syntheticIndex})";
                     if (!byLabel.TryGetValue(key, out var list))
                     {
-                        list = new List<(Registrant, bool)>();
+                        list = new List<(Registrant, bool, string)>();
                         byLabel[key] = list;
                         labelOrder.Add(key);
                     }
-                    list.Add((member, isLead));
+                    list.Add((member, isLead, departure));
                 }
 
                 foreach (var key in labelOrder)
@@ -138,7 +159,7 @@ namespace Autofills.Common
                 for (int i = 0; i < ordered.Count; i += maxInAGroup)
                 {
                     groupNum++;
-                    var chunk = ordered.Skip(i).Take(maxInAGroup).Select(o => (o.Member, o.IsLead)).ToList();
+                    var chunk = ordered.Skip(i).Take(maxInAGroup).Select(o => (o.Member, o.IsLead, o.Departure)).ToList();
                     groups.Add(BuildGroup(groupNum.ToString(CultureInfo.InvariantCulture), chunk, detectionRan, warnings));
                 }
             }
@@ -164,10 +185,14 @@ namespace Autofills.Common
         /// and warns about the rest.
         /// </summary>
         private static RegistrationGroup BuildGroup(
-            string label, List<(Registrant Member, bool IsLead)> members, bool detectionRan, List<string> warnings)
+            string label, List<(Registrant Member, bool IsLead, string Departure)> members, bool detectionRan, List<string> warnings)
         {
+            // Resolved up front, once per group, whatever the Lead Booker logic
+            // below ends up doing with the ordering.
+            var departure = ResolveDeparture(label, members.Select(m => m.Departure), warnings);
+
             if (!detectionRan || members.Count == 0)
-                return new RegistrationGroup(label, members.Select(m => m.Member).ToList());
+                return new RegistrationGroup(label, members.Select(m => m.Member).ToList(), departure);
 
             var leadIndexes = new List<int>();
             for (int i = 0; i < members.Count; i++)
@@ -177,7 +202,7 @@ namespace Autofills.Common
             if (leadIndexes.Count == 0)
             {
                 warnings.Add($"Group {label}: nobody's name was marked red as Lead Booker - using {members[0].Member.RegistrationId} (first listed on the sheet) instead.");
-                return new RegistrationGroup(label, members.Select(m => m.Member).ToList());
+                return new RegistrationGroup(label, members.Select(m => m.Member).ToList(), departure);
             }
 
             if (leadIndexes.Count > 1)
@@ -193,7 +218,38 @@ namespace Autofills.Common
                 if (i != leadIndex)
                     reordered.Add(members[i].Member);
 
-            return new RegistrationGroup(label, reordered);
+            return new RegistrationGroup(label, reordered, departure);
+        }
+
+        /// <summary>
+        /// One departure point for the whole group from the values on its
+        /// members' rows. Blank cells are ignored (only some rows might have it
+        /// filled in), and values are compared case-insensitively. If everyone
+        /// who has one agrees, that's it. If they disagree the sheet has a
+        /// mistake - the most common value wins (ties: the first one listed)
+        /// and a warning names every value found, so the organiser can fix the
+        /// sheet; the upload still succeeds, same policy as the Lead Booker
+        /// warnings. No values at all resolves to empty, without a warning: a
+        /// group not yet allocated a departure point is normal.
+        /// </summary>
+        private static string ResolveDeparture(string label, IEnumerable<string> values, List<string> warnings)
+        {
+            var distinct = values
+                .Select(v => (v ?? string.Empty).Trim())
+                .Where(v => v.Length > 0)
+                .GroupBy(v => v, StringComparer.OrdinalIgnoreCase)
+                .Select((g, index) => (Value: g.First(), Count: g.Count(), Index: index))
+                .ToList();
+
+            if (distinct.Count == 0)
+                return string.Empty;
+
+            var chosen = distinct.OrderByDescending(d => d.Count).ThenBy(d => d.Index).First().Value;
+
+            if (distinct.Count > 1)
+                warnings.Add($"Group {label}: members list different departure points ({string.Join(", ", distinct.Select(d => d.Value))}) - using {chosen}.");
+
+            return chosen;
         }
 
 
@@ -204,7 +260,7 @@ namespace Autofills.Common
         /// </summary>
         public static bool HasSaleHeader(DataTable sheet)
         {
-            var (headerRow, groupCol, _, _) = FindHeader(sheet);
+            var (headerRow, groupCol, _, _, _) = FindHeader(sheet);
             return headerRow >= 0 && groupCol >= 0;
         }
 
@@ -217,12 +273,12 @@ namespace Autofills.Common
         /// to the slice-from-the-top convention), but HasSaleHeader requires it -
         /// that's what tells a sale tab apart from the master roster.
         /// </summary>
-        private static (int HeaderRow, int GroupCol, int RegCol, int PostcodeCol) FindHeader(DataTable sheet)
+        private static (int HeaderRow, int GroupCol, int RegCol, int PostcodeCol, int DepartureCol) FindHeader(DataTable sheet)
         {
             if (sheet.Rows.Count == 0)
-                return (-1, -1, -1, -1);
+                return (-1, -1, -1, -1, -1);
 
-            int groupCol = -1, regCol = -1, postcodeCol = -1;
+            int groupCol = -1, regCol = -1, postcodeCol = -1, departureCol = -1;
 
             for (int c = 0; c < sheet.Columns.Count; c++)
             {
@@ -233,12 +289,14 @@ namespace Autofills.Common
                     regCol = c;
                 else if (string.Equals(val, "Postcode", StringComparison.OrdinalIgnoreCase))
                     postcodeCol = c;
+                else if (departureCol < 0 && DepartureHeaders.Contains(val))
+                    departureCol = c; // optional; the first such column wins
             }
 
             if (regCol < 0 || postcodeCol < 0)
-                return (-1, -1, -1, -1);
+                return (-1, -1, -1, -1, -1);
 
-            return (0, groupCol, regCol, postcodeCol);
+            return (0, groupCol, regCol, postcodeCol, departureCol);
         }
 
         /// <summary>

@@ -87,8 +87,9 @@
 
 .groups-group-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
+  gap: 4px 10px;
   font-size: 1.1em;
   color: #333;
 }
@@ -96,6 +97,12 @@
 .groups-group-count {
   font-size: 0.85em;
   color: #666;
+}
+
+/* The group's departure point (Coach sale), beside the head count. */
+.groups-group-departure {
+  font-size: 0.85em;
+  color: #444;
 }
 
 .groups-copy-all {
