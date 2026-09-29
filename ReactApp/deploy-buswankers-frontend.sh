@@ -9,12 +9,18 @@ set -e
 #
 # Mirrors deploy-breaktackle-frontend.sh from the RozeBowl estate (same
 # build-here / rsync-to-holly / remote-activate pattern), trimmed down: no
-# shared @if/web-common libraries and no per-environment config.js (the app
-# talks to its backend at the fixed same-origin path /buswankers-api/, which
-# buswankers-api.inc proxies to UploaderService on intelligence - that half is
-# deployed by UploaderService/deploy-buswankers-backend.sh, not here). NB this
-# is Create React App, not Vite - the build output directory is "build/", not
-# "dist/".
+# per-environment config.js (the app talks to its backend at the fixed
+# same-origin path /buswankers-api/, which buswankers-api.inc proxies to
+# UploaderService on intelligence - that half is deployed by
+# UploaderService/deploy-buswankers-backend.sh, not here).
+#
+# Since 2026-09-29 the app is a Vite build (it was Create React App) that signs
+# in through Keycloak using the estate's shared @if/web-common and
+# @if/web-common-react libraries, exactly like IFLogViewer. Those live in the
+# Infoforum repo, which must be checked out beside this one ($IF_REPO), and are
+# rebuilt on every deploy by 'npm run rebuild'. Vite is configured to keep
+# writing to "build/" (CRA's directory) rather than its default "dist/", so the
+# rsync below is unchanged.
 #
 # The autofill files themselves are NOT part of this build - they live in the
 # backend's AutofillStore and are served through the API; buswankers.inc
@@ -22,7 +28,8 @@ set -e
 # never changes which autofill files exist.
 #
 # Prerequisites:
-#   - Node.js, npm and rsync on this box; this repo cloned to $BW_REPO
+#   - Node.js, npm and rsync on this box; this repo cloned to $BW_REPO and the
+#     Infoforum repo (if-web-common, if-web-common-react) cloned to $IF_REPO
 #   - passwordless ssh <this box> -> holly for $DEPLOY_USER (see RozeBowl
 #     estate notes section 6.5 for the pattern; same key works here)
 #   - NOPASSWD sudo for $DEPLOY_USER on holly (the remote activate step
@@ -42,6 +49,10 @@ set -e
 # Configuration
 # ----------------------------
 BW_REPO="${BW_REPO:-$HOME/repos/BusWankersSharp}"
+# Sibling checkout of Infoforum: package.json points at
+# ../../Infoforum/if-web-common(-react), i.e. $BW_REPO/../Infoforum. Keep the
+# two defaults side by side (matches deploy-buswankers-backend.sh).
+IF_REPO="${IF_REPO:-$HOME/repos/Infoforum}"
 FRONTEND_DIR="$BW_REPO/ReactApp"
 
 # Remote serving host (holly). Override via env if it ever moves.
@@ -92,6 +103,21 @@ echo ""
 # ----------------------------
 if [ ! -d "$BW_REPO" ]; then
     echo -e "${RED}[ERROR] BusWankersSharp repo not found: $BW_REPO${NC}"
+    exit 1
+fi
+if [ ! -d "$IF_REPO/if-web-common" ] || [ ! -d "$IF_REPO/if-web-common-react" ]; then
+    echo -e "${RED}[ERROR] Infoforum shared libraries not found under IF_REPO: $IF_REPO${NC}"
+    echo    "        Expected $IF_REPO/if-web-common and $IF_REPO/if-web-common-react."
+    exit 1
+fi
+# package.json links the libraries by the relative path ../../Infoforum/..., so
+# IF_REPO must be that same directory - otherwise this script would pull and
+# report on one checkout while npm builds against another (or none).
+LINKED_IF="$(cd "$FRONTEND_DIR/../../Infoforum" 2>/dev/null && pwd -P || true)"
+REAL_IF="$(cd "$IF_REPO" && pwd -P)"
+if [ "$LINKED_IF" != "$REAL_IF" ]; then
+    echo -e "${RED}[ERROR] IF_REPO ($REAL_IF) is not the checkout package.json links to (${LINKED_IF:-missing}).${NC}"
+    echo    "        Keep Infoforum as a sibling of BusWankersSharp (../../Infoforum from ReactApp)."
     exit 1
 fi
 if ! command -v node &> /dev/null; then
@@ -147,6 +173,10 @@ if [ "$DO_PULL" = true ]; then
     cd "$BW_REPO"
     guarded_pull "BusWankersSharp" || exit 1
     echo -e "${GREEN}[OK] BusWankersSharp updated${NC}"
+    # The shared auth libraries the build links to (see package.json).
+    cd "$IF_REPO"
+    guarded_pull "Infoforum" || exit 1
+    echo -e "${GREEN}[OK] Infoforum updated${NC}"
     echo ""
 else
     echo -e "${YELLOW}>>> Phase 1: Git Pull (skipped)${NC}"
@@ -160,21 +190,19 @@ cd "$FRONTEND_DIR"
 
 if [ "$DO_BUILD" = true ]; then
     echo -e "${BLUE}>>> Phase 2: Build Bus Wankers Frontend${NC}"
-    echo "    Installing deps and building (CRA -> build/)..."
-    npm install
-    # DISABLE_ESLINT_PLUGIN=true: eslint-config-react-app 7.0.1 (bundled with
-    # react-scripts 5.0.1) is incompatible with eslint 8.57.1's config schema
-    # ("Environment key \"jest/globals\" is unknown") - this skips CRA's
-    # eslint-loader integration so the build doesn't fail on it. The warnings
-    # you see from `npx eslint` directly are unaffected/still useful.
-    DISABLE_ESLINT_PLUGIN=true npm run build
+    echo "    Rebuilding the shared libraries, installing deps and building (Vite -> build/)..."
+    # `npm run rebuild` = rebuild @if/web-common + @if/web-common-react from the
+    # Infoforum checkout, npm install (re-links them), then vite build. Same
+    # sequence IFLogViewer's deploy uses. (The old CRA-only workaround,
+    # DISABLE_ESLINT_PLUGIN, is gone with react-scripts.)
+    npm run rebuild
     echo -e "${GREEN}[OK] Frontend built${NC}"
 else
     echo -e "${YELLOW}>>> Phase 2: Build (skipped) - deploying existing build/${NC}"
 fi
 
 if [ ! -d "build" ]; then
-    echo -e "${RED}[ERROR] No build directory to deploy (CRA outputs to build/, not dist/)${NC}"
+    echo -e "${RED}[ERROR] No build directory to deploy (vite.config.js writes to build/, not dist/)${NC}"
     exit 1
 fi
 echo ""
@@ -399,6 +427,8 @@ echo "    curl -sI http://$DEPLOY_HOST/buswankers/"
 echo "    curl -s  https://longmanrd.net/buswankers-api/api/autofill/files      # what's in the store"
 echo "    curl -sI https://longmanrd.net/buswankers/general_autofill.csv        # proxied to the API; 404 until ingested"
 echo ""
-echo "  Reminder: package.json's \"homepage\" must stay \"/buswankers\" or CRA"
-echo "  will emit asset URLs for the wrong path."
+echo "  Reminder: vite.config.js's BASE must stay '/buswankers/' or Vite will emit"
+echo "  asset URLs (and the sign-in redirect URIs) for the wrong path."
+echo "  First sign-in also needs the BusWankers user client in Keycloak to allow"
+echo "  https://longmanrd.net/buswankers/{signin/callback,signout/callback,silent-callback}."
 echo ""

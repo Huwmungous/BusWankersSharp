@@ -19,8 +19,9 @@ loses an upload result or a half-filled test form. **Documentation is the landin
 tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
 `WHATSAPP_GROUP_URL` in `src/links.js` is set (it's hidden while that's empty).
 
-1. **Update Files** (`IngestBar`) - choose a registration workbook, enter the shared
-   password, click *Upload & Ingest*. Every sale sheet in the workbook is generated
+1. **Update Files** (`IngestBar`) - choose a registration workbook and click
+   *Upload & Ingest* (there is no password box any more - you are already signed
+   in; see "Signing in" below). Every sale sheet in the workbook is generated
    and written into the live autofill files in one go (a sale sheet that has been
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
@@ -498,6 +499,44 @@ sheets have none). It is repeated on every member's row but belongs to the
   handler shows what the boxes hold instead. Linked from the Test Form tab and both
   sets of instructions.
 
+## Signing in (2026-09-29)
+
+The whole page is behind a Keycloak sign-in, replacing the old shared upload
+password. `src/main.jsx` wraps `<App />` in `AppInitializer` from
+`@if/web-common-react` - the same wrapper IFLogViewer uses - so on first load anyone
+who isn't signed in is sent to Keycloak and only sees the app once they come back
+with a token. A single shared Keycloak identity is enough for now.
+
+- **How it works:** `AppInitializer` fetches the sign-in settings (realm, client,
+  authority) for the `BusWankers` AppDomain from the config service at `/config`,
+  runs the OIDC flow (`/signin/callback`, `/signout/callback`, `/silent-callback`
+  under `/buswankers/`), and installs a `fetch` interceptor that attaches the access
+  token to every request the page makes. Nothing in `src/api/autofillApi.js` handles
+  a token itself.
+- **The API:** UploaderService requires that token on **every** route - the writes
+  (`POST /sheets`, `/generate`, `/ingest`) and the reads (`GET /files`,
+  `/files/{name}`, `/files/{name}/groups`, `/running-order`, `/time`) - and checks it
+  server-side. `src/launch/clock.js` fetches the token itself *before* starting its
+  timer and sends it on the browser's un-intercepted `fetch`, so the sale-day clock
+  sync isn't skewed by a token lookup.
+- **What no longer works:** anything that can't sign in now gets `401`. The AutoFill
+  Options extension's Remote Import URL (`/buswankers/<name>_autofill.csv`) can't be
+  used any more - import the downloaded file instead. The bookmarklets' live groups
+  fetch fails and they fall back to the data baked into them at build time.
+- **Keycloak side (not in this repo):** the `BusWankers` AppDomain needs a *user*
+  client in its realm - a public client using the authorization-code flow with PKCE -
+  whose valid redirect URIs include
+  `https://longmanrd.net/buswankers/signin/callback`, `.../signout/callback` and
+  `.../silent-callback` (plus the `http://localhost:3000/buswankers/...` equivalents
+  for `npm run dev`), whose web origins include `https://longmanrd.net`, and which the
+  config service returns for `type=user`. One shared user account is enough.
+- **Local development:** `npm run dev` serves `http://localhost:3000/buswankers/` and
+  proxies `/config` and `/buswankers-api` to longmanrd.net. `.env` holds the build
+  values (`VITE_IF_APP_NAME`, `VITE_IF_ENVIRONMENT`, `VITE_LOG_LEVEL`,
+  `VITE_IF_CONFIG_SERVICE_URL`); `.env.development` overrides them for `dev`.
+  `npm run rebuild` rebuilds the linked Infoforum libraries first; `npm test` runs
+  the Vitest suite.
+
 ## Deployment
 
 Two halves, both wired into RozeBowlDeployDaemon's trunk pipeline on queeg (steps
@@ -524,16 +563,21 @@ sudo ./ops/deploy/setup-holly-buswankers-links.sh   # run ON holly
 
 The frontend deploy mirrors `deploy-breaktackle-frontend.sh` (build here, rsync the
 build to a staging dir on holly, remote `sudo` sync into place with `www-data`
-ownership, reload nginx) but trimmed down - no shared `@if/web-common` libraries to
-rebuild, no per-environment `config.js` (the API path is fixed, same-origin). One
-difference worth remembering: this is **Create React App**, not Vite, so the build
-output is `build/`, not `dist/`.
+ownership, reload nginx) but trimmed down - no per-environment `config.js` (the API
+path is fixed, same-origin). Since 2026-09-29 it is a **Vite** app (it was Create
+React App) that shares the estate's `@if/web-common` / `@if/web-common-react`
+libraries with IFLogViewer, so the deploy also needs the Infoforum repo checked out
+beside this one (`$IF_REPO`, default `~/repos/Infoforum`) and rebuilds those
+libraries on every run (`npm run rebuild`). `vite.config.js` keeps the output in
+`build/` (CRA's directory) so the rsync is unchanged.
 
-`package.json`'s `"homepage": "/buswankers"` is what makes CRA emit correctly
--prefixed asset URLs (and is what `process.env.PUBLIC_URL` resolves from in the
-components) - keep it in sync if the public path ever changes. The
+`vite.config.js`'s `BASE` (`/buswankers/`, the old `"homepage"`) is what makes Vite
+emit correctly prefixed asset URLs, what `process.env.PUBLIC_URL` is defined from
+for the components that still use it, and what `src/main.jsx` builds the sign-in
+redirect URIs from - keep it in sync if the public path ever changes. The
 `try_files ... /buswankers/index.html` fallback in `buswankers.inc` only matters
-for a direct hit that isn't a static asset. NB holly's `longmanrd.conf` currently
+for a direct hit that isn't a static asset (the sign-in callback routes get their
+own explicit location in `buswankers-api.inc`). NB holly's `longmanrd.conf` currently
 declares `location /buswankers/` inline in the HTTPS server block, so the deploy
 script installs `buswankers.inc` but doesn't include it (nginx refuses a duplicate
 location); `buswankers-api.inc` - the API proxy plus the `*_autofill.csv` rewrite -

@@ -13,15 +13,44 @@
 // Nothing here is React-specific; LaunchSection calls syncClock() and then
 // uses correctedNow(sync) wherever it needs "the real time now".
 
+import { authService } from '@if/web-common';
+
 export const TIME_URL = '/buswankers-api/api/time';
+
+// The browser's own fetch, captured when this module loads - which is before
+// AppInitializer (src/main.jsx) replaces window.fetch with a version that looks
+// up the access token and attaches it to each call. /api/time now needs a token
+// like every other route, but that lookup would happen BETWEEN the moment `t0`
+// is taken below and the request actually leaving the browser: an asymmetric
+// delay, which the offset arithmetic reads as clock error. So sampleOnce fetches
+// the token itself BEFORE t0 and sends it through this un-intercepted fetch.
+// Declared here, above sampleOnce, and only ever read inside it.
+const nativeFetch =
+  typeof window !== 'undefined' && typeof window.fetch === 'function'
+    ? window.fetch.bind(window)
+    : null;
 
 // One exchange with /api/time. Returns { offsetMs, rttMs, source, server,
 // serverOffsetMs } or throws with a message the page can show.
 export async function sampleOnce() {
+  // Token first, so its (possibly refreshing) lookup is outside the timed hop.
+  let token = null;
+  try {
+    token = await authService.getAccessToken();
+  } catch (err) {
+    console.debug('[launch] could not get an access token for the time service:', err && err.message);
+  }
+  if (!token) {
+    throw new Error('Not signed in - reload the page to sign in again.');
+  }
   const t0 = Date.now();
   let response;
   try {
-    response = await fetch(`${TIME_URL}?_=${t0}`, { cache: 'no-store' });
+    // Falls back to whatever fetch is current if there was no window at load.
+    response = await (nativeFetch || fetch)(`${TIME_URL}?_=${t0}`, {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
+    });
   } catch (err) {
     throw new Error(`Could not reach the time service (${err.message || 'network error'}).`);
   }

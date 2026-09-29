@@ -1,9 +1,10 @@
-using System.Security.Cryptography;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Autofills.Common;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Autofills.UploaderService.Controllers;
@@ -13,11 +14,12 @@ namespace Autofills.UploaderService.Controllers;
 /// own sheets - every sheet is a sale except "Starting Lineup" and "URL"), get back
 /// the AutoFill-Options-format autofill file for it.
 ///
-/// Two ways in, both password-gated:
-///   1. POST /sheets    - file + password -> the sale sheets in this workbook
-///      POST /generate  - file + password + the exact sheet name chosen -> the file,
+/// Two ways in, both requiring a signed-in user (a Keycloak bearer token - see
+/// the auth note below):
+///   1. POST /sheets    - file -> the sale sheets in this workbook
+///      POST /generate  - file + the exact sheet name chosen -> the file,
 ///                        streamed straight back to the browser. Nothing touches disk.
-///   2. POST /ingest    - file + password -> EVERY sale sheet in the workbook is
+///   2. POST /ingest    - file -> EVERY sale sheet in the workbook is
 ///                        generated and written into the AutofillStore, replacing
 ///                        whatever was there for that sale (and an EMPTIED sale
 ///                        sheet removes the file that was there). This is what the
@@ -28,24 +30,29 @@ namespace Autofills.UploaderService.Controllers;
 ///                        running_order.json, which is where the page gets the
 ///                        festival year and the running-order list.
 ///
-/// And two ways out, deliberately NOT password-gated (they're what the AutoFill
-/// Options extension's Remote Import URL and the page's download button hit, and
-/// the old static files under /buswankers/ were public too):
+/// And the read routes, also requiring a signed-in user:
 ///   GET /files             - what's in the store (filename, size, last modified),
 ///                            so the page can mark sales with no file as empty
 ///   GET /files/{filename}  - the file itself
+///   GET /files/{filename}/groups - the groups behind a file (bookmarklet data)
 ///   GET /running-order     - the roster from the last ingest (year + people), or 404
 ///
-/// Sits behind a shared password (see IsPasswordCorrect) - simple, deliberate gate
-/// against a stranger stumbling on the URL, not a real auth system. It's enforced
-/// here server-side (not just hidden in the frontend JS), so it's at least a real
-/// gate rather than pure obscurity - but there's no per-user accounts, no rate
-/// limiting, and the password lives in plain text in appsettings.json. Fine for a
-/// personal tool with a small, trusted group of users; don't treat it as more than
-/// that.
+/// Auth (2026-09-29, replacing the old shared UploadPassword): the whole
+/// controller carries a class-level [Authorize], so every route needs a valid
+/// Keycloak access token from the BusWankers AppDomain's realm - the page gets one
+/// by signing in on first load (see ReactApp/src/main.jsx) and its fetch
+/// interceptor attaches it to every request. ServiceFactory's JwtBearer pipeline
+/// does the checking, server-side, so it's a real gate and not just a hidden form
+/// field. A single shared Keycloak identity is enough at this stage: there's no
+/// per-user role check, only "is this a valid signed-in user". Reads were made
+/// protected too (2026-09-29): the files hold names and registration numbers.
+/// Consequence: anything that can't send a token - the AutoFill Options
+/// extension's Remote Import URL, the bookmarklets' live groups fetch - now gets
+/// 401 (the bookmarklets fall back to their baked-in data).
 /// </summary>
 [ApiController]
 [Route("api/autofill")]
+[Authorize]
 public class UploadServiceController : ControllerBase
 {
     private readonly IConfiguration _config;
@@ -64,10 +71,10 @@ public class UploadServiceController : ControllerBase
 
     [HttpPost("sheets")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Sheets([FromForm] IFormFile? file, [FromForm] string? password)
+    public async Task<IActionResult> Sheets([FromForm] IFormFile? file)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        _log.LogDebug("Sheets requested by {Caller} for upload {Upload} ({Bytes} bytes)",
+            CallerName(), file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
@@ -96,11 +103,10 @@ public class UploadServiceController : ControllerBase
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Generate(
         [FromForm] IFormFile? file,
-        [FromForm] string? sheetName,
-        [FromForm] string? password)
+        [FromForm] string? sheetName)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        _log.LogDebug("Generate requested by {Caller} for upload {Upload} sheet {Sheet}",
+            CallerName(), file?.FileName, sheetName);
 
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
@@ -153,10 +159,12 @@ public class UploadServiceController : ControllerBase
     /// </summary>
     [HttpPost("ingest")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Ingest([FromForm] IFormFile? file, [FromForm] string? password, CancellationToken ct)
+    public async Task<IActionResult> Ingest([FromForm] IFormFile? file, CancellationToken ct)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        // Who ingested what is worth having in the log: an ingest replaces the
+        // live files every bookmarklet and extension reads from.
+        _log.LogInformation("Ingest requested by {Caller} for upload {Upload} ({Bytes} bytes)",
+            CallerName(), file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
@@ -510,22 +518,18 @@ public class UploadServiceController : ControllerBase
         return SaleFolderLabels.TryGetValue(trimmed, out var known) ? known : trimmed;
     }
 
-    private bool IsPasswordCorrect(string? supplied)
-    {
-        var expected = _config["UploadPassword"];
-        if (string.IsNullOrEmpty(expected))
-            return false; // fail closed if the server isn't configured with a password
-
-        var suppliedBytes = Encoding.UTF8.GetBytes(supplied ?? string.Empty);
-        var expectedBytes = Encoding.UTF8.GetBytes(expected);
-
-        // Fixed-time compare so response timing can't be used to guess the password
-        // character by character. Lengths differing is itself timing-safe to check.
-        if (suppliedBytes.Length != expectedBytes.Length)
-            return false;
-
-        return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
-    }
+    /// <summary>
+    /// A log-friendly name for whoever the bearer token says is calling: the
+    /// Keycloak preferred_username, falling back to the standard name claim, then
+    /// the subject id, then "unknown". For logging only - authorisation has
+    /// already been decided by [Authorize] before any action runs.
+    /// </summary>
+    private string CallerName() =>
+        User.FindFirstValue("preferred_username")
+        ?? User.Identity?.Name
+        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? User.FindFirstValue("sub")
+        ?? "unknown";
 
     /// <summary>
     /// Per-sheet outcome of POST /ingest. Serialised as the strings "Ok" / "Empty" /
