@@ -505,7 +505,8 @@ The whole page is behind a Keycloak sign-in, replacing the old shared upload
 password. `src/main.jsx` wraps `<App />` in `AppInitializer` from
 `@if/web-common-react` - the same wrapper IFLogViewer uses - so on first load anyone
 who isn't signed in is sent to Keycloak and only sees the app once they come back
-with a token. A single shared Keycloak identity is enough for now.
+with a token. Changing the files additionally needs membership of the `uploaders`
+group (see below).
 
 - **How it works:** `AppInitializer` fetches the sign-in settings (realm, client,
   authority) for the `BusWankers` AppDomain from the config service at `/config`,
@@ -530,8 +531,31 @@ with a token. A single shared Keycloak identity is enough for now.
   `.../silent-callback` (plus the `http://localhost:3000/buswankers/...` equivalents
   for `npm run dev`), whose web origins include `https://longmanrd.net`, and which the
   config service returns for `type=user`. One shared user account is enough.
+- **Who may update the files (the `uploaders` group):** signing in is not enough to
+  change the autofill files. The Update Files tab, and the three write routes behind it
+  (`POST /sheets`, `/generate`, `/ingest`), are limited to members of the Keycloak group
+  `uploaders`. Everything else (documentation, groups, running order, test form, launch)
+  stays open to any signed-in user.
+  - *Backend:* `UploaderService/UploaderAuthorization.cs` registers an `Uploaders`
+    authorisation policy, applied with `[Authorize(Policy = ...)]` to those three actions
+    on top of the controller-wide `[Authorize]`. No token gets `401`; a signed-in user
+    outside the group gets `403`. The group name is `Auth:UploadersGroup` in
+    `appsettings.json` (default `uploaders`); membership is read from the `groups` (or
+    `kc_groups`) claim, with or without a leading `/`, case-sensitively, top-level groups
+    only. Denials are logged as warnings with the caller and the groups their token carried.
+  - *Frontend:* `src/auth/uploaders.js` reads the same claim from the ID token; `src/tabs.js`
+    hides the tab and ignores `#update-files` for anyone else. This is convenience only -
+    the backend is the real gate. A `403` from `/ingest` shows a plain explanation.
+  - *Keycloak side:* create the group `uploaders` in the realm and add the intended users.
+    The client also needs a **Group Membership** protocol mapper with token claim name
+    `groups`, added to the ID token and the access token (full group path on or off - both
+    work). Without the mapper nobody is recognised as an uploader. Group changes only reach
+    a user's token when they sign out and back in.
+  - *Shared identity:* the gate only means something once people sign in as themselves; a
+    single shared account is either in the group (everyone can upload) or not (nobody can).
 - **Local development:** `npm run dev` serves `http://localhost:3000/buswankers/` and
   proxies `/config` and `/buswankers-api` to longmanrd.net. `.env` holds the build
+
   values (`VITE_IF_APP_NAME`, `VITE_IF_ENVIRONMENT`, `VITE_LOG_LEVEL`,
   `VITE_IF_CONFIG_SERVICE_URL`); `.env.development` overrides them for `dev`.
   `npm run rebuild` rebuilds the linked Infoforum libraries first; `npm test` runs

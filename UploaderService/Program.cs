@@ -1,3 +1,4 @@
+using Autofills.UploaderService;
 using IFGlobal.WebServices;
 
 // =============================================================================
@@ -23,8 +24,7 @@ using IFGlobal.WebServices;
 //     to a signed-in user of the BusWankers AppDomain's user client and
 //     validated by ServiceFactory's JwtBearer pipeline (issuer, lifetime and
 //     signing key checked; audience "account" or this domain's client). This
-//     replaces the old shared UploadPassword. A single shared Keycloak
-//     identity is enough at this stage. Callers that can't sign in (the
+//     replaces the old shared UploadPassword. Callers that can't sign in (the
 //     AutoFill Options extension's Remote Import URL, the bookmarklets' live
 //     groups fetch) therefore get 401. ServiceFactory still runs its ConfigWebService/Keycloak bootstrap
 //     for the service's own client regardless (it needs an authenticated
@@ -32,6 +32,12 @@ using IFGlobal.WebServices;
 //     "IF" section for the AppDomain this authenticates against, and
 //     deploy-buswankers-backend.sh's preflight for what has to be provisioned
 //     first.
+//   - The "Uploaders" policy (2026-09-29, see UploaderAuthorization.cs) is
+//     registered through ConfigureServices below: POST /ingest, /sheets and
+//     /generate additionally require membership of the Keycloak group
+//     "uploaders" (403 for any other signed-in user). Group membership is read
+//     from the token's "groups" claim, so the BusWankers user client needs a
+//     Group Membership mapper that adds it to the access token.
 //   - ClientSecretEnvVar is overridden to BUSWANKERS_CLIENTSECRET: BusWankers
 //     gets its own AppDomain/Keycloak client (like RozeBowl and BreakTackle
 //     each have their own), so its secret lives under its own name in
@@ -73,7 +79,8 @@ var app = await ServiceFactory.CreateAsync(new ServiceFactoryOptions
     UseAuthentication = true,
     UseIFLogger = true,
     ClientSecretEnvVar = "BUSWANKERS_CLIENTSECRET",
-    SharedEstateService = true
+    SharedEstateService = true,
+    ConfigureServices = (services, context) => services.AddUploadersAuthorisation(context.Configuration)
 });
 
 app.Run();

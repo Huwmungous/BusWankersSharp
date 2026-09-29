@@ -43,10 +43,20 @@ namespace Autofills.UploaderService.Controllers;
 /// by signing in on first load (see ReactApp/src/main.jsx) and its fetch
 /// interceptor attaches it to every request. ServiceFactory's JwtBearer pipeline
 /// does the checking, server-side, so it's a real gate and not just a hidden form
-/// field. A single shared Keycloak identity is enough at this stage: there's no
-/// per-user role check, only "is this a valid signed-in user". Reads were made
-/// protected too (2026-09-29): the files hold names and registration numbers.
-/// Consequence: anything that can't send a token - the AutoFill Options
+/// field. Reading needs only "is this a valid signed-in user" (a single shared
+/// Keycloak identity was enough for that); updating needs group membership too -
+/// see the next paragraph. Reads were made protected too (2026-09-29): the files
+/// hold names and registration numbers.
+///
+/// Who may UPDATE the files (2026-09-29): the three routes that take an uploaded
+/// workbook - POST /ingest (the one that writes the store), /sheets and
+/// /generate - carry [Authorize(Policy = "Uploaders")], so beyond a valid token
+/// the caller must be in the Keycloak group "uploaders" (see
+/// UploaderAuthorization.cs). Anyone else who is signed in gets 403. The reads
+/// stay open to every signed-in user. The page hides the Update Files tab from
+/// non-members, but this is the real check.
+///
+/// Consequence of protecting the reads: anything that can't send a token - the AutoFill Options
 /// extension's Remote Import URL, the bookmarklets' live groups fetch - now gets
 /// 401 (the bookmarklets fall back to their baked-in data).
 /// </summary>
@@ -70,6 +80,7 @@ public class UploadServiceController : ControllerBase
     }
 
     [HttpPost("sheets")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Sheets([FromForm] IFormFile? file)
     {
@@ -100,6 +111,7 @@ public class UploadServiceController : ControllerBase
     }
 
     [HttpPost("generate")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Generate(
         [FromForm] IFormFile? file,
@@ -158,6 +170,7 @@ public class UploadServiceController : ControllerBase
     /// frontend's handling simple). A workbook where nothing ingests is a 400.
     /// </summary>
     [HttpPost("ingest")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Ingest([FromForm] IFormFile? file, CancellationToken ct)
     {

@@ -7,6 +7,7 @@ import RunningOrderSection from './RunningOrderSection';
 import TestSection from './TestSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
 import { DEFAULT_YEAR } from '../festival';
+import { useIsUploader } from '../auth/uploaders';
 import { useActiveTab } from '../tabs';
 import './BusWankersPage.css';
 
@@ -39,7 +40,8 @@ const mergeStoredFiles = (prev, next) => {
 };
 
 // The site is one page with six tabs (see src/tabs.js): Update Files (upload
-// a spreadsheet to refresh the live autofill files), Documentation (the
+// a spreadsheet to refresh the live autofill files - members of the "uploaders"
+// group only, so everyone else sees five), Documentation (the
 // landing tab - pick and download your autofill file), Groups (a standalone
 // copy/paste fallback for every group, for when the bookmark, bookmarklet,
 // extension or Launcher jump doesn't work), Running Order (who's on this
@@ -55,6 +57,10 @@ const mergeStoredFiles = (prev, next) => {
 // page talks about comes from.
 const BusWankersPage = () => {
   const [activeTab] = useActiveTab();
+  // Only members of the "uploaders" group get the Update Files tab (the server
+  // enforces the same rule on the ingest route - this just keeps the page from
+  // offering a control that would be refused).
+  const uploader = useIsUploader();
   const [storedFiles, setStoredFiles] = useState(new Map());
   const [storeStatus, setStoreStatus] = useState('loading'); // loading | ready | error
   const [storeError, setStoreError] = useState('');
@@ -160,9 +166,11 @@ const BusWankersPage = () => {
 
   return (
     <div className="bus-wankers-page" id="top">
-      <div {...tabProps('update-files')}>
-        <IngestBar onIngested={refreshStore} />
-      </div>
+      {uploader && (
+        <div {...tabProps('update-files')}>
+          <IngestBar onIngested={refreshStore} />
+        </div>
+      )}
       <div {...tabProps('documentation')}>
         <DocumentationSection
           year={year}
