@@ -1,0 +1,40 @@
+.install-prompt-banner {
+  background-color: #3b1f6b;
+  color: white;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.install-btn-install {
+  background-color: #fff;
+  color: #3b1f6b;
+  border: none;
+  padding: 6px 18px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.install-btn-install:hover {
+  background-color: #e9e0f7;
+}
+
+.install-btn-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.install-btn-dismiss:hover {
+  color: #fff;
+}

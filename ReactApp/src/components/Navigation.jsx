@@ -1,6 +1,7 @@
 import React from 'react';
 import { TABS, useActiveTab } from '../tabs';
 import { WHATSAPP_GROUP_URL } from '../links';
+import InstallPrompt from './InstallPrompt';
 import './Navigation.css';
 
 // The tab bar. Each entry is a real link to the tab's hash (#documentation,
@@ -17,45 +18,48 @@ const Navigation = () => {
   };
 
   return (
-    <nav className="navigation" aria-label="Page sections">
-      <div className="nav-container">
-        <a href="#documentation" className="nav-logo" onClick={(e) => onTabClick(e, 'documentation')}>
-          Bus Wankers
-        </a>
-        <ul className="nav-menu" role="tablist">
-          {TABS.map((tab) => {
-            const active = tab.id === activeTab;
-            return (
-              <li key={tab.id} className="nav-item" role="presentation">
+    <>
+      <InstallPrompt />
+      <nav className="navigation" aria-label="Page sections">
+        <div className="nav-container">
+          <a href="#documentation" className="nav-logo" onClick={(e) => onTabClick(e, 'documentation')}>
+            Bus Wankers
+          </a>
+          <ul className="nav-menu" role="tablist">
+            {TABS.map((tab) => {
+              const active = tab.id === activeTab;
+              return (
+                <li key={tab.id} className="nav-item" role="presentation">
+                  <a
+                    href={`#${tab.id}`}
+                    className={`nav-link${active ? ' nav-link-active' : ''}`}
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls={`tab-${tab.id}`}
+                    onClick={(e) => onTabClick(e, tab.id)}
+                  >
+                    {tab.label}
+                  </a>
+                </li>
+              );
+            })}
+            {WHATSAPP_GROUP_URL && (
+              <li className="nav-item nav-item-whatsapp" role="presentation">
                 <a
-                  href={`#${tab.id}`}
-                  className={`nav-link${active ? ' nav-link-active' : ''}`}
-                  role="tab"
-                  aria-selected={active}
-                  aria-controls={`tab-${tab.id}`}
-                  onClick={(e) => onTabClick(e, tab.id)}
+                  href={WHATSAPP_GROUP_URL}
+                  className="nav-link nav-link-whatsapp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open the Bus Wankers WhatsApp group"
                 >
-                  {tab.label}
+                  WhatsApp
                 </a>
               </li>
-            );
-          })}
-          {WHATSAPP_GROUP_URL && (
-            <li className="nav-item nav-item-whatsapp" role="presentation">
-              <a
-                href={WHATSAPP_GROUP_URL}
-                className="nav-link nav-link-whatsapp"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Open the Bus Wankers WhatsApp group"
-              >
-                WhatsApp
-              </a>
-            </li>
-          )}
-        </ul>
-      </div>
-    </nav>
+            )}
+          </ul>
+        </div>
+      </nav>
+    </>
   );
 };
 
