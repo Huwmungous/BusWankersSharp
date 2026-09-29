@@ -33,6 +33,11 @@ const apiLog = (context) => {
 export const SESSION_EXPIRED_MESSAGE =
   'Your sign-in has expired - reload the page to sign in again.';
 export const NOT_ALLOWED_MESSAGE = "Your account isn't allowed to do that.";
+// What a 403 from the ingest route means: signed in, but not in the Keycloak
+// group "uploaders" (the page hides the Update Files tab from such people, so
+// seeing this means the group changed since they signed in, or a stale tab).
+export const UPLOADERS_ONLY_MESSAGE =
+  "Only members of the 'uploaders' group can update the autofill files. If you should be one, sign out and back in so your access refreshes.";
 
 // UploaderService always answers with a JSON { error } body, so a non-JSON
 // error response didn't come from it - it came from holly's nginx (or
@@ -115,6 +120,13 @@ export async function ingestWorkbook(file) {
 
   const response = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: form });
   apiLog({ status: response.status, ok: response.ok }).debug('Ingest response received');
+  if (response.status === 403) {
+    // Authorisation, not a problem with the workbook: no per-sheet results to show.
+    apiLog({ status: response.status, group: 'uploaders' }).warn('Ingest refused - not in the uploaders group');
+    const denied = new Error(UPLOADERS_ONLY_MESSAGE);
+    denied.results = [];
+    throw denied;
+  }
   if (!response.ok) {
     let results = [];
     let message = `Request failed (${response.status}).`;

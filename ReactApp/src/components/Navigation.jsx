@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { TABS, useActiveTab } from '../tabs';
+import { useActiveTab, useVisibleTabs } from '../tabs';
 import { WHATSAPP_GROUP_URL } from '../links';
 import InstallPrompt from './InstallPrompt';
 import LogoutButton from './LogoutButton';
@@ -12,6 +12,8 @@ import './Navigation.css';
 // shortcut sits at the far end, and only when a link is configured.
 const Navigation = () => {
   const [activeTab, selectTab] = useActiveTab();
+  // Update Files is only in the list for members of the "uploaders" group.
+  const tabs = useVisibleTabs();
   const menuRef = useRef(null);
 
   const onTabClick = (e, id) => {
@@ -41,7 +43,7 @@ const Navigation = () => {
             Bus Wankers
           </a>
           <ul className="nav-menu" role="tablist" ref={menuRef}>
-            {TABS.map((tab) => {
+            {tabs.map((tab) => {
               const active = tab.id === activeTab;
               return (
                 <li key={tab.id} className="nav-item" role="presentation">
