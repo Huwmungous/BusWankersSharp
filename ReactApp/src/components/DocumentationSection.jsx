@@ -1,10 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import AutofillUpdateNotice from './AutofillUpdateNotice';
 import ExtensionInstructions from './ExtensionInstructions';
-import GroupFillPanel from './GroupFillPanel';
+import GroupFillPanel, { CopyButton } from './GroupFillPanel';
 import SaleBookmarklet from './SaleBookmarklet';
 import { downloadStoredFile, groupsUrlFor, saveBlob } from '../api/autofillApi';
-import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName, saleBookmarkletTitle } from '../bookmarklet';
+import {
+  bookmarkFolderFileName,
+  bookmarkFolderHtml,
+  bookmarkFolderName,
+  runSaleFillOnThisPage,
+  saleBookmarkletHref,
+  saleBookmarkletTitle,
+} from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
@@ -43,9 +50,11 @@ import './DocumentationSection.css';
 // installed app (useIsStandalone) there is no bookmarks bar and nothing to
 // drag onto, and the fill bookmark can only ever run from a browser tab on
 // the See Tickets page - so the Bookmark route swaps its drag instructions
-// for "open this page in your browser to set the bookmark up" steps (a
-// one-off: once the bookmark is on the bar it works whether or not the app
-// is installed), and the Copy & paste card says it works anywhere. Nothing
+// for a "Copy bookmark" button plus steps for pasting it into a new bookmark
+// in the browser (a page can't write to the bookmarks itself, so the paste is
+// the person's; "open this page in your browser and drag it" stays as the
+// alternative). A one-off: once the bookmark is saved it works whether or not
+// the app is installed. The Copy & paste card says it works anywhere. Nothing
 // else on the page cares which way it was opened.
 // The chosen method is remembered per browser (localStorage) so someone who
 // picked a different route lands on their own instructions next time.
@@ -335,11 +344,56 @@ const DocumentationSection = ({
               <div className="bw-note doc-standalone-note">
                 <p>
                   <strong>You&rsquo;re using the installed app, which has no bookmarks bar</strong> - so there&rsquo;s nothing
-                  here to drag the bookmark onto. The fill bookmark can only be set up from a normal browser tab, and on
-                  the day it only ever runs in the browser, on the See Tickets page. This is a one-off: once the bookmark is
-                  on your bar it works whether or not the app is installed.
+                  here to drag the bookmark onto. You can still get it into your browser: copy it here, then paste it into a
+                  new bookmark there. This is a one-off: once the bookmark is saved it works whether or not the app is
+                  installed, and on the day it only ever runs in the browser, on the See Tickets page.
                 </p>
-                <p>Open this page in your browser to set it up:</p>
+
+                {groups && groups.length > 0 ? (
+                  <>
+                    <p className="doc-copy-bookmark">
+                      <CopyButton
+                        text={saleBookmarkletHref(groups, groupsUrl, info.folderLabel)}
+                        label="Copy bookmark"
+                        copiedLabel="Bookmark copied"
+                        title={`Copy the ${info.label.toLowerCase()} bookmark to paste into a new bookmark in your browser`}
+                      />
+                      <button
+                        type="button"
+                        className="bw-try"
+                        onClick={() => {
+                          runSaleFillOnThisPage(groups, groupsUrl, info.folderLabel);
+                          showTestForm();
+                        }}
+                        title="Fill the Test Form tab with this bookmark, exactly as it would work on the day - picker included"
+                      >
+                        Try it on the Test Form
+                      </button>
+                    </p>
+                    <ol>
+                      <li>Click <strong>Copy bookmark</strong> above.</li>
+                      <li>
+                        In your browser, bookmark any page - <kbd>Ctrl</kbd>+<kbd>D</kbd> on Windows / Linux,{' '}
+                        <kbd>&#8984;</kbd>+<kbd>D</kbd> on a Mac, or the star / menu on a phone.
+                      </li>
+                      <li>
+                        Edit that bookmark (right-click it and choose <em>Edit</em>; on a phone, open your bookmarks and edit it
+                        from there). Change its name to <strong>{saleBookmarkletTitle(info.folderLabel, year)}</strong>, replace
+                        its address (the URL box) with what you copied, and save.
+                      </li>
+                    </ol>
+                    <p className="doc-fallback">
+                      Paste it into the bookmark&rsquo;s own address box - not the browser&rsquo;s address bar, which often
+                      removes the start of pasted code.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    {groupsStatus === 'loading' ? `Loading the ${info.label.toLowerCase()} groups\u2026` : 'Nothing has been loaded for this sale yet - the organiser needs to upload the spreadsheet on the Update Files tab.'}
+                  </p>
+                )}
+
+                <p>Prefer to drag it? Open this page in your browser to set it up:</p>
                 <ul>
                   <li><strong>Windows / Mac / Linux (Chrome or Edge):</strong> click the <kbd>&#8942;</kbd> menu at the top right of this
                     app window and choose <em>Open in browser</em> (Edge: <em>Open in Microsoft Edge</em>), then come back to this tab there.</li>
@@ -350,7 +404,7 @@ const DocumentationSection = ({
                     home-screen app.</li>
                 </ul>
                 <p>
-                  Or skip the bookmark altogether: the <a href="#groups">Groups tab</a> works fine in here - every registration
+                  If all else fails, the <a href="#groups">Groups tab</a> works fine in here - every registration
                   number and postcode has a Copy button.
                 </p>
               </div>
