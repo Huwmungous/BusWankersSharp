@@ -1,13 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { LoggerService } from '@if/web-common';
+import { getLog, asError } from '../log';
 import { ingestWorkbook } from '../api/autofillApi';
 import './IngestBar.css';
 
-// Created when used, not at module load - see apiLog in ../api/autofillApi.
-const barLog = (context) => {
-  const base = LoggerService.create('IngestBar');
-  return context ? base.withContext(context) : base;
-};
+// Created when used, not at module load - see ../log.js.
+const barLog = (attributes) => getLog('IngestBar', attributes);
 
 // The roster outcome of an ingest rendered as one more row in the per-sheet
 // list, so the person uploading sees it alongside the sales it was read with.
@@ -41,7 +38,9 @@ const IngestBar = ({ onIngested }) => {
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0] || null);
+    const chosen = e.target.files[0] || null;
+    barLog({ fileName: chosen && chosen.name, fileBytes: chosen && chosen.size }).debug('Spreadsheet chosen');
+    setFile(chosen);
     setStatus('idle');
     setMessage('');
     setResults([]);
@@ -50,11 +49,13 @@ const IngestBar = ({ onIngested }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) {
+      barLog().debug('Submit with no spreadsheet chosen');
       setStatus('error');
       setMessage('Choose a spreadsheet (.xlsx or .xls) first.');
       return;
     }
 
+    barLog({ fileName: file.name, fileBytes: file.size }).info('Upload and ingest submitted');
     setStatus('working');
     setMessage('');
     setResults([]);
@@ -79,7 +80,7 @@ const IngestBar = ({ onIngested }) => {
       }
 
       barLog({ okCount, clearedCount, emptyCount, failCount, rosterStatus: runningOrder ? runningOrder.status : 'none' })
-        .debug('Ingest finished');
+        .info('Ingest finished');
 
       setResults(runningOrder ? [...outcome, rosterAsResult(runningOrder)] : outcome);
       setStatus(failCount === 0 && !rosterFailed ? 'done' : 'error');
@@ -93,7 +94,7 @@ const IngestBar = ({ onIngested }) => {
       if (onIngested) onIngested(outcome);
     } catch (err) {
       barLog({ reason: err && err.message, sheetResults: Array.isArray(err && err.results) ? err.results.length : 0 })
-        .warn('Ingest failed');
+        .warn('Ingest failed', asError(err));
       setStatus('error');
       setMessage(err.message || 'Could not reach the upload service.');
       // "No sheet could be ingested" comes with the per-sheet reasons - show them.

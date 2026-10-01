@@ -47,7 +47,13 @@ public class TimeController : ControllerBase
         var received = receivedLocal + snapshot.Offset;
         var sent = sentLocal + snapshot.Offset;
 
-        _log.LogDebug("Time request answered: source {Source} via {Server}, offset {OffsetMs:0.0} ms, handling {HandlingMs:0.0} ms",
+        // Trace, not Debug: this runs between stamping the reply's sent time and
+        // the reply leaving, and the launcher reads any delay there as clock
+        // error. appsettings.json now lifts this service to Debug, so a Debug
+        // line here would run on every call; Trace stays off unless someone turns
+        // it on to inspect one exchange. RequestLoggingMiddleware records every
+        // call (status, elapsed) once the response has gone.
+        _log.LogTrace("Time request answered: source {Source} via {Server}, offset {OffsetMs:0.0} ms, handling {HandlingMs:0.0} ms",
             snapshot.Source, snapshot.Server ?? "-", snapshot.Offset.TotalMilliseconds, (sentLocal - receivedLocal).TotalMilliseconds);
 
         Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";

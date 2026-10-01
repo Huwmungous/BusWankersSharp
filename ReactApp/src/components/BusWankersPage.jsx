@@ -9,7 +9,12 @@ import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
 import { DEFAULT_YEAR } from '../festival';
 import { useIsUploader } from '../auth/uploaders';
 import { useActiveTab } from '../tabs';
+import { getLog, asError } from '../log';
 import './BusWankersPage.css';
+
+// Created when used, never at module load (see ../log.js). Declared above the
+// component and every callback that calls it, so it is initialised first.
+const pageLog = (attributes) => getLog('BusWankersPage', attributes);
 
 // Two file-listing entries are "the same" when nothing about them moved.
 // (hash is '' when the server couldn't work one out - both sides then compare
@@ -92,7 +97,7 @@ const BusWankersPage = () => {
   const refreshFiles = useCallback(async ({ quiet = false } = {}) => {
     try {
       const files = await fetchStoredFiles();
-      console.debug('[updates] file listing fetched', { quiet, files: files.size });
+      pageLog({ quiet, files: files.size }).debug('File listing fetched');
       filesLoadedRef.current = true;
       // Keep the SAME Map (and the same entry objects) when nothing changed,
       // so a re-check that finds nothing new causes no re-render and, more to
@@ -102,9 +107,10 @@ const BusWankersPage = () => {
       setStoreError('');
     } catch (err) {
       if (quiet && filesLoadedRef.current) {
-        console.debug('[updates] background re-check failed, keeping the last listing:', err && err.message);
+        pageLog({ reason: err && err.message }).warn('Background re-check failed, keeping the last listing');
         return;
       }
+      pageLog({ quiet }).error('File listing failed', asError(err));
       setStoreStatus('error');
       setStoreError((err && err.message) || 'Could not reach the upload service.');
     }
@@ -120,8 +126,9 @@ const BusWankersPage = () => {
   // sale) look again, once. Nothing runs while it's in the background.
   useEffect(() => {
     const onVisibilityChange = () => {
+      pageLog({ visibilityState: document.visibilityState }).debug('Page visibility changed');
       if (document.visibilityState === 'visible') {
-        console.debug('[updates] page visible again - re-checking the file listing');
+        pageLog().debug('Page visible again - re-checking the file listing');
         recheckFiles();
       }
     };
@@ -130,17 +137,20 @@ const BusWankersPage = () => {
   }, [recheckFiles]);
 
   const refreshStore = useCallback(async () => {
+    pageLog().debug('Refreshing the store: file listing and running order');
     // The two fetches are independent: a running-order problem must not hide
     // the autofill files, and vice versa, so each settles its own state.
     const filesPromise = refreshFiles();
 
     const rosterPromise = fetchRunningOrder().then(
       (roster) => {
+        pageLog({ year: roster ? roster.year : 'none', people: roster ? roster.entries.length : 0 }).debug('Running order loaded');
         setRunningOrder(roster);
         setRunningOrderStatus('ready');
         setRunningOrderError('');
       },
       (err) => {
+        pageLog().error('Running order failed to load', asError(err));
         setRunningOrderStatus('error');
         setRunningOrderError(err.message || 'Could not reach the upload service.');
       },
@@ -152,6 +162,16 @@ const BusWankersPage = () => {
   useEffect(() => {
     refreshStore();
   }, [refreshStore]);
+
+  // One line when the page first mounts, and one per tab change, so a session's
+  // path through the page can be read back from the log.
+  useEffect(() => {
+    pageLog({ uploader }).info('Page ready (mounted, or the uploader status changed)');
+  }, [uploader]);
+
+  useEffect(() => {
+    pageLog({ activeTab }).debug('Tab selected');
+  }, [activeTab]);
 
   // The year the page is about: from the ingested roster when there is one,
   // otherwise the fallback, so nothing ever renders "Glastonbury undefined".

@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bookmarkletHref, bookmarkletSource, bookmarkletTitle, groupDisplayLabel, runFillOnThisPage } from '../bookmarklet';
 import { nameForRegistration } from '../runningOrder';
+import { getLog, asError } from '../log';
 import './GroupFillPanel.css';
+
+// Created when used, never at module load (see ../log.js). Declared above
+// copyText and every component that logs.
+const panelLog = (attributes) => getLog('GroupFillPanel', attributes);
 
 // A javascript: href has to be set outside React's render path: React 18
 // warns on javascript: URLs in JSX and a future version will refuse them,
@@ -42,12 +47,17 @@ const BookmarkletLink = ({ group, year, groupsUrl, saleFolderLabel }) => {
 // fallback tab) can offer the same one-click clipboard behaviour without a
 // second implementation of it drifting out of step with this one.
 export const copyText = async (text) => {
+  // Length only is logged: what is copied is registration numbers and
+  // postcodes, which stay out of the log.
+  const chars = String(text).length;
   try {
     await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
+  } catch (err) {
+    panelLog({ chars }).warn('Copy to the clipboard failed', asError(err));
     return false;
   }
+  panelLog({ chars }).debug('Text copied to the clipboard');
+  return true;
 };
 
 // title: the tooltip. Defaults to showing the text being copied, which suits a
@@ -85,6 +95,7 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl, saleFolderLabe
   const count = group.members.length;
 
   const tryOnTestForm = () => {
+    panelLog({ groupCode: group.code, members: count }).info('Try on the Test Form');
     runFillOnThisPage(group, groupsUrl, saleFolderLabel);
     if (onTried) onTried(group);
   };

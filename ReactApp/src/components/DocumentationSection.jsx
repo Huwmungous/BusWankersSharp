@@ -18,7 +18,12 @@ import { useAutofillGroups } from '../useAutofillGroups';
 import { useIsStandalone } from '../displayMode';
 import { updateStateFor, useImportedVersions } from '../importedVersions';
 import { buildNameLookup } from '../runningOrder';
+import { getLog, asError } from '../log';
 import './DocumentationSection.css';
+
+// Created when used, never at module load (see ../log.js). Declared above the
+// component and every handler that calls it.
+const docsLog = (attributes) => getLog('DocumentationSection', attributes);
 
 // The Documentation tab (the landing tab). Pick a sale, then choose HOW to
 // fill the registration form - three routes, all driven by the same
@@ -163,7 +168,11 @@ const DocumentationSection = ({
   const groupsUrl = groupsUrlFor(info.filename);
 
   const handleDownload = async () => {
-    if (isEmpty) return;
+    if (isEmpty) {
+      docsLog({ fileName: info.filename }).debug('Download ignored - nothing ingested for this sale');
+      return;
+    }
+    docsLog({ saleType, fileName: info.filename }).info('Download requested');
     setDownloadStatus('working');
     setDownloadError('');
     try {
@@ -176,6 +185,7 @@ const DocumentationSection = ({
       onRecheckFiles();
       setDownloadStatus('idle');
     } catch (err) {
+      docsLog({ saleType, fileName: info.filename }).error('Download failed', asError(err));
       setDownloadStatus('error');
       setDownloadError(err.message || 'Download failed.');
     }
@@ -186,6 +196,7 @@ const DocumentationSection = ({
   // transfer. Records the version the listing shows right now.
   const handleMarkImported = () => {
     if (isEmpty) return;
+    docsLog({ saleType, fileName: info.filename }).info('Marked as imported by the user');
     markTaken(info.filename, stored);
   };
 
@@ -196,14 +207,19 @@ const DocumentationSection = ({
   // name regardless of how many times the underlying spreadsheet changes.
   const folderName = bookmarkFolderName(info.folderLabel);
   const downloadBookmarkFolder = () => {
-    if (!groups || groups.length === 0) return;
+    if (!groups || groups.length === 0) {
+      docsLog({ saleType }).debug('Bookmark folder download ignored - no groups loaded');
+      return;
+    }
+    docsLog({ saleType, groups: groups.length }).info('Bookmark folder downloaded');
     const html = bookmarkFolderHtml(groups, folderName, year, groupsUrl, info.folderLabel);
     saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel));
   };
 
   const chooseMethod = (m) => {
+    docsLog({ method: m, previous: method }).info('Fill method chosen');
     setMethod(m);
-    try { window.localStorage.setItem(METHOD_KEY, m); } catch { /* per-browser convenience only */ }
+    try { window.localStorage.setItem(METHOD_KEY, m); } catch (err) { docsLog().debug('Fill method could not be remembered', asError(err)); }
   };
 
   // "Try it on the Test Form" has just filled the (hidden) Test Form tab -
@@ -228,6 +244,7 @@ const DocumentationSection = ({
               className="form-input"
               value={saleType}
               onChange={(e) => {
+                docsLog({ from: saleType, to: e.target.value }).info('Sale selected');
                 onSaleTypeChange(e.target.value);
                 setDownloadStatus('idle');
                 setDownloadError('');
