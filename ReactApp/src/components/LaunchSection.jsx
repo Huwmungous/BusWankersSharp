@@ -46,6 +46,9 @@ const REHEARSAL_SECONDS = 30;
 // Named target for the launch window, so re-arming reuses it rather than
 // leaving a trail of holding pages.
 const LAUNCH_WINDOW_NAME = 'buswankers-launch';
+// Tag on the postMessage the holding page sends back about its own wake lock,
+// so the listener can ignore any other message.
+const LAUNCH_WINDOW_MESSAGE_SOURCE = 'buswankers-launch-window';
 
 const isHttpUrl = (s) => {
   try {
@@ -93,12 +96,70 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 
 // The holding page shown in the launch window until the moment, so it's
 // obvious what the window is and nobody closes it by mistake.
-const holdingPageHtml = (when, url, rehearsal) => `<!doctype html><html><head><meta charset="utf-8"><title>Bus Wankers launch window - ${escapeHtml(when)}</title>
+//
+// It also holds the screen wake lock. The launch window opens in front of the
+// Launcher tab (often as a tab of its own), which hides the Launcher and makes
+// the browser drop ITS lock - so this page, the visible one, asks for its own
+// and reports the outcome back to the opener with postMessage (for the log and
+// the status line). It retries when it becomes visible or focused again. The
+// script is plain ES5 inside a template literal: no backticks or dollar-braces
+// in it, and parentOrigin is JSON-encoded with '<' escaped.
+const holdingPageHtml = (when, url, rehearsal, parentOrigin) => `<!doctype html><html><head><meta charset="utf-8"><title>Bus Wankers launch window - ${escapeHtml(when)}</title>
 <style>body{font-family:Arial,sans-serif;background:${rehearsal ? '#6d4c00' : '#1b5e20'};color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
 h1{font-size:1.6em;margin:0 0 .4em}p{margin:.3em 0;font-size:1.1em}code{font-size:.9em;opacity:.85}
-.nb{margin-top:1.2em;font-size:.95em;max-width:34em;background:rgba(255,255,255,.15);padding:.6em .9em;border-radius:6px}</style></head>
+.nb{margin-top:1.2em;font-size:.95em;max-width:34em;background:rgba(255,255,255,.15);padding:.6em .9em;border-radius:6px}
+.wl{margin-top:1em;font-size:.9em;opacity:.9}</style></head>
 <body><div><h1>Bus Wankers launch window${rehearsal ? ' (rehearsal)' : ''}</h1><p>This window will jump to</p><p><code>${escapeHtml(url)}</code></p><p>at <strong>${escapeHtml(when)}</strong></p><p>Leave it open. Don't refresh it.</p>
-<p class="nb"><strong>NB:</strong> Rehearse this at least once in case the website asks you to accept cookies - accept them then, so there's nothing to click through on the day.</p></div></body></html>`;
+<p class="wl" id="wl">Screen wake lock: asking&hellip;</p>
+<p class="nb"><strong>NB:</strong> Rehearse this at least once in case the website asks you to accept cookies - accept them then, so there's nothing to click through on the day.</p></div>
+<script>
+(function () {
+  var parentOrigin = ${JSON.stringify(parentOrigin).replace(/</g, '\\u003c')};
+  var lock = null;
+  var pending = false;
+  var label = document.getElementById('wl');
+  function show(text) { if (label) label.textContent = 'Screen wake lock: ' + text; }
+  function tell(state, errorName) {
+    try {
+      if (window.opener) {
+        window.opener.postMessage({
+          source: '${LAUNCH_WINDOW_MESSAGE_SOURCE}',
+          state: state,
+          errorName: errorName || null,
+          visibility: document.visibilityState
+        }, parentOrigin);
+      }
+    } catch (e) { /* the opener is gone; nothing to tell */ }
+  }
+  function acquire() {
+    if (!navigator.wakeLock) { show('not supported by this browser'); tell('unsupported'); return; }
+    if (lock || pending) return;
+    pending = true;
+    navigator.wakeLock.request('screen').then(function (granted) {
+      pending = false;
+      lock = granted;
+      show('on');
+      tell('held');
+      granted.addEventListener('release', function () {
+        if (lock === granted) {
+          lock = null;
+          show('off - will retry when this window is visible');
+          tell('released');
+        }
+      });
+    }, function (err) {
+      pending = false;
+      show('refused (' + (err && err.name ? err.name : 'error') + ') - will retry');
+      tell('refused', err && err.name);
+    });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') acquire();
+  });
+  window.addEventListener('focus', acquire);
+  acquire();
+})();
+<\/script></body></html>`;
 
 const LaunchSection = ({ year }) => {
   const [{ config: initialConfig, imported }] = useState(() => loadConfig());
@@ -122,6 +183,10 @@ const LaunchSection = ({ year }) => {
   const [wakeLockState, setWakeLockState] = useState(
     () => (typeof navigator !== 'undefined' && navigator.wakeLock ? 'idle' : 'unsupported'),
   );
+  // What the launch window's holding page last reported about ITS wake lock:
+  // unknown | held | refused | released | unsupported. 'unknown' until it speaks
+  // (it never will if the page's script was blocked).
+  const [launchWindowLock, setLaunchWindowLock] = useState('unknown');
 
   const syncRef = useRef(null);
   const launchWindowRef = useRef(null);
@@ -242,6 +307,7 @@ const LaunchSection = ({ year }) => {
     wakeLockWantedRef.current = false;
     wakeLockRef.current = null;
     setWakeLockState((was) => (was === 'unsupported' ? was : 'idle'));
+    setLaunchWindowLock('unknown');
     if (lock) {
       lock.release().catch(() => {});
       launchLog().debug('Screen wake lock released by us');
@@ -272,6 +338,27 @@ const LaunchSection = ({ year }) => {
   // Never leave a lock behind if this section goes away while armed.
   useEffect(() => () => releaseWakeLock(), [releaseWakeLock]);
 
+  // The launch window's holding page holds a wake lock of its own (see
+  // holdingPageHtml) and tells us how it is getting on. Only messages from our
+  // own origin, from the current launch window, carrying our tag are heard.
+  useEffect(() => {
+    const onMessage = (event) => {
+      const data = event.data;
+      if (event.origin !== window.location.origin) return;
+      if (!data || data.source !== LAUNCH_WINDOW_MESSAGE_SOURCE) return;
+      if (!launchWindowRef.current || event.source !== launchWindowRef.current) return;
+      const state = String(data.state);
+      setLaunchWindowLock(state);
+      const log = launchLog({ state, errorName: data.errorName, visibility: data.visibility });
+      if (state === 'held') log.debug('Launch window screen wake lock acquired');
+      else if (state === 'released') log.info('Launch window screen wake lock released by the browser');
+      else if (state === 'refused') log.warn('Launch window screen wake lock refused');
+      else log.warn('Launch window screen wake lock unavailable');
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
 
   // ---- the launch window --------------------------------------------------
 
@@ -293,7 +380,7 @@ const LaunchSection = ({ year }) => {
     }
     try {
       w.document.open();
-      w.document.write(holdingPageHtml(formatLondon(whenMs), config.url, rehearsal));
+      w.document.write(holdingPageHtml(formatLondon(whenMs), config.url, rehearsal, window.location.origin));
       w.document.close();
     } catch (err) {
       // A stale window on another origin - still ours to navigate later.
@@ -409,10 +496,13 @@ const LaunchSection = ({ year }) => {
   }, [armed, targetMs, effectiveLeadMs, fireLaunch, runSync]);
 
   const armFor = (whenMs, rehearsal) => {
-    // Ask for the wake lock FIRST. window.open can shift focus to the new
-    // window and leave this page hidden for a moment, and a request made then is
-    // refused. The request call itself runs synchronously inside the click.
+    // Ask for this tab's wake lock first, straight from the click. Opening the
+    // launch window usually hides this tab (it often opens as a tab in front),
+    // and the browser then drops the lock - that is why the launch window's
+    // holding page asks for one of its own. This one still covers the case where
+    // the launch window is a separate window sitting beside this one.
     wakeLockWantedRef.current = true;
+    setLaunchWindowLock('unknown');
     acquireWakeLock('arm');
     const opened = openLaunchWindow(whenMs, rehearsal);
     const draw = config.staggerMs > 0 ? Math.round(Math.random() * config.staggerMs) : 0;
@@ -491,6 +581,8 @@ const LaunchSection = ({ year }) => {
   // ---- render -------------------------------------------------------------
 
   const title = `Glastonbury ${year} sale-day launcher`;
+  // A lock held by the launch window counts only while that window is still open.
+  const wakeLockHeld = wakeLockState === 'held' || (launchWindowLock === 'held' && launchWindowOpen);
   const clockSource = sync
     ? (sync.source === 'ntp' ? `NTP via ${sync.server}` : 'the server’s own clock (NTP unavailable!)')
     : '';
@@ -653,24 +745,27 @@ const LaunchSection = ({ year }) => {
                 <ul>
                   <li>Keep this window and the launch window <strong>on screen</strong> - not minimised, not behind another window.</li>
                   <li>Laptop on mains power; don&rsquo;t let it sleep.</li>
-                  {wakeLockState === 'held' && (
-                    <li>Screen wake lock is on, so this screen should stay awake.</li>
+                  {wakeLockHeld && (
+                    <li>
+                      Screen wake lock is on (held by {wakeLockState === 'held' ? 'this tab' : 'the launch window'}),
+                      so the screen should stay awake.
+                    </li>
                   )}
-                  {wakeLockState === 'unsupported' && (
+                  {!wakeLockHeld && wakeLockState === 'unsupported' && (
                     <li className="launch-error">
                       <strong>This browser has no screen wake lock.</strong> Change the power settings so the screen
                       doesn&rsquo;t sleep, or keep touching it.
                     </li>
                   )}
-                  {(wakeLockState === 'refused' || wakeLockState === 'released') && (
+                  {!wakeLockHeld && (wakeLockState === 'refused' || wakeLockState === 'released') && (
                     <li className="launch-error">
                       <strong>The screen wake lock is not active.</strong> The browser refused it or took it back - often
-                      battery saver or low-power mode, or this tab being hidden. It will try again each time this tab is
-                      visible or you tap it. Until it says it is on, change the power settings so the screen doesn&rsquo;t
-                      sleep.
+                      battery saver or low-power mode, or the tab being hidden. Whichever of this tab and the launch
+                      window is in front will try again each time it is visible or you tap it. Until it says it is on,
+                      change the power settings so the screen doesn&rsquo;t sleep.
                     </li>
                   )}
-                  {wakeLockState === 'idle' && <li>Asking for a screen wake lock&hellip;</li>}
+                  {!wakeLockHeld && wakeLockState === 'idle' && <li>Asking for a screen wake lock&hellip;</li>}
                   <li>Don&rsquo;t reload this tab - that disarms it.</li>
                 </ul>
               </div>
