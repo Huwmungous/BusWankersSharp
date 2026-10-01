@@ -116,10 +116,22 @@ const LaunchSection = ({ year }) => {
   const [launchWindowOpen, setLaunchWindowOpen] = useState(false);
   const [, setTick] = useState(0);
   const [copied, setCopied] = useState(false);
+  // idle | held | refused | released | unsupported. 'refused' means the browser
+  // said no (battery saver, hidden window...); 'released' means we held it and the
+  // browser took it back (tab hidden). Both are retried while armed.
+  const [wakeLockState, setWakeLockState] = useState(
+    () => (typeof navigator !== 'undefined' && navigator.wakeLock ? 'idle' : 'unsupported'),
+  );
 
   const syncRef = useRef(null);
   const launchWindowRef = useRef(null);
   const wakeLockRef = useRef(null);
+  // True while a request is in flight, so two triggers (arm click plus a
+  // visibilitychange, say) can't both pass the guard and leak a second lock.
+  const wakeLockPendingRef = useRef(false);
+  // True from arming until disarm/fire/unmount. Checked after the request
+  // resolves so a lock granted after a disarm is released, not kept.
+  const wakeLockWantedRef = useRef(false);
 
   const saleMs = londonWallToEpoch(config.saleAt);
   const rehearsing = rehearsalTarget != null;
@@ -179,33 +191,87 @@ const LaunchSection = ({ year }) => {
 
   // ---- wake lock ----------------------------------------------------------
 
-  const acquireWakeLock = useCallback(async () => {
-    if (!navigator.wakeLock || wakeLockRef.current) return;
+  // The request must be made while this page is visible and focused, and it is
+  // best made straight from the Arm click. 'reason' says what triggered it so
+  // the log can tell a refusal at arm time from one on a retry.
+  const acquireWakeLock = useCallback(async (reason) => {
+    if (!navigator.wakeLock) {
+      setWakeLockState('unsupported');
+      return;
+    }
+    // Already held, or a request is in flight: nothing to do. Deliberately not
+    // logged - the retry triggers (focus, clicks) would make it noisy.
+    if (wakeLockRef.current || wakeLockPendingRef.current) return;
+    wakeLockPendingRef.current = true;
+    launchLog({ reason, visibility: document.visibilityState, focused: document.hasFocus() })
+      .debug('Screen wake lock requested');
     try {
-      wakeLockRef.current = await navigator.wakeLock.request('screen');
-      wakeLockRef.current.addEventListener('release', () => {
-        wakeLockRef.current = null;
+      const lock = await navigator.wakeLock.request('screen');
+      if (!wakeLockWantedRef.current) {
+        // Disarmed (or fired, or unmounted) while the request was in flight.
+        launchLog({ reason }).debug('Screen wake lock granted after it was no longer wanted - releasing');
+        lock.release().catch(() => {});
+        return;
+      }
+      wakeLockRef.current = lock;
+      lock.addEventListener('release', () => {
+        // Compare with THIS lock: a stale release event must not clear a newer one.
+        if (wakeLockRef.current === lock) {
+          wakeLockRef.current = null;
+          if (wakeLockWantedRef.current) setWakeLockState('released');
+          launchLog({ visibility: document.visibilityState }).info('Screen wake lock released by the browser');
+        }
       });
-      launchLog().debug('Screen wake lock acquired');
+      setWakeLockState('held');
+      launchLog({ reason }).debug('Screen wake lock acquired');
     } catch (err) {
-      launchLog().warn('Screen wake lock refused', asError(err));
+      setWakeLockState('refused');
+      launchLog({
+        reason,
+        errorName: err && err.name,
+        visibility: document.visibilityState,
+        focused: document.hasFocus(),
+      }).warn('Screen wake lock refused', asError(err));
+    } finally {
+      wakeLockPendingRef.current = false;
     }
   }, []);
 
   const releaseWakeLock = useCallback(() => {
     const lock = wakeLockRef.current;
+    wakeLockWantedRef.current = false;
     wakeLockRef.current = null;
-    if (lock) lock.release().catch(() => {});
+    setWakeLockState((was) => (was === 'unsupported' ? was : 'idle'));
+    if (lock) {
+      lock.release().catch(() => {});
+      launchLog().debug('Screen wake lock released by us');
+    }
   }, []);
 
+  // While armed, try again whenever the page comes back to the foreground or
+  // the user touches it - those are the moments a refused or released lock can
+  // succeed. acquireWakeLock is a no-op while a lock is held or in flight.
   useEffect(() => {
     if (!armed) return undefined;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') acquireWakeLock();
+    const retryOn = (reason) => () => {
+      if (document.visibilityState === 'visible') acquireWakeLock(reason);
     };
+    const onVisible = retryOn('visibilitychange');
+    const onFocus = retryOn('focus');
+    const onPointer = retryOn('pointerdown');
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pointerdown', onPointer);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pointerdown', onPointer);
+    };
   }, [armed, acquireWakeLock]);
+
+  // Never leave a lock behind if this section goes away while armed.
+  useEffect(() => () => releaseWakeLock(), [releaseWakeLock]);
+
 
   // ---- the launch window --------------------------------------------------
 
@@ -343,6 +409,11 @@ const LaunchSection = ({ year }) => {
   }, [armed, targetMs, effectiveLeadMs, fireLaunch, runSync]);
 
   const armFor = (whenMs, rehearsal) => {
+    // Ask for the wake lock FIRST. window.open can shift focus to the new
+    // window and leave this page hidden for a moment, and a request made then is
+    // refused. The request call itself runs synchronously inside the click.
+    wakeLockWantedRef.current = true;
+    acquireWakeLock('arm');
     const opened = openLaunchWindow(whenMs, rehearsal);
     const draw = config.staggerMs > 0 ? Math.round(Math.random() * config.staggerMs) : 0;
     setStaggerDraw(draw);
@@ -352,7 +423,6 @@ const LaunchSection = ({ year }) => {
       ? ''
       : 'The browser blocked the launch window - allow pop-ups for this site and arm again. Until then, this tab itself will jump at the moment.');
     setArmed(true);
-    acquireWakeLock();
     launchLog({
       rehearsal,
       armedFor: formatLondon(whenMs),
@@ -582,7 +652,25 @@ const LaunchSection = ({ year }) => {
                 )}
                 <ul>
                   <li>Keep this window and the launch window <strong>on screen</strong> - not minimised, not behind another window.</li>
-                  <li>Laptop on mains power; don&rsquo;t let it sleep (a screen wake lock has been requested{navigator.wakeLock ? '' : ', but this browser doesn’t support it'}).</li>
+                  <li>Laptop on mains power; don&rsquo;t let it sleep.</li>
+                  {wakeLockState === 'held' && (
+                    <li>Screen wake lock is on, so this screen should stay awake.</li>
+                  )}
+                  {wakeLockState === 'unsupported' && (
+                    <li className="launch-error">
+                      <strong>This browser has no screen wake lock.</strong> Change the power settings so the screen
+                      doesn&rsquo;t sleep, or keep touching it.
+                    </li>
+                  )}
+                  {(wakeLockState === 'refused' || wakeLockState === 'released') && (
+                    <li className="launch-error">
+                      <strong>The screen wake lock is not active.</strong> The browser refused it or took it back - often
+                      battery saver or low-power mode, or this tab being hidden. It will try again each time this tab is
+                      visible or you tap it. Until it says it is on, change the power settings so the screen doesn&rsquo;t
+                      sleep.
+                    </li>
+                  )}
+                  {wakeLockState === 'idle' && <li>Asking for a screen wake lock&hellip;</li>}
                   <li>Don&rsquo;t reload this tab - that disarms it.</li>
                 </ul>
               </div>
