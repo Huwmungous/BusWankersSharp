@@ -45,6 +45,7 @@ public sealed class AutofillStore
         new("^(?:[a-z0-9]+(?:_[a-z0-9]+)*_)?autofill\\.csv$", RegexOptions.Compiled);
 
     private readonly string _directory;
+    private readonly ILogger _log;
 
     /// <summary>
     /// Content hashes already worked out, keyed by full path and valid only
@@ -57,10 +58,24 @@ public sealed class AutofillStore
     /// </summary>
     private readonly ConcurrentDictionary<string, (long Length, long WriteTicks, string Hash)> _hashCache = new();
 
-    public AutofillStore(IConfiguration config)
+    /// <summary>
+    /// The logger is optional (a store built without one logs nothing) and is
+    /// assigned before anything else can use it. No log line is written here:
+    /// the controller builds a store per request, so a constructor log would
+    /// repeat on every call - Program.cs logs the resolved directory once at
+    /// start-up instead (see <see cref="ResolveDirectory"/>).
+    /// </summary>
+    public AutofillStore(IConfiguration config, ILogger? log = null)
+    {
+        _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        _directory = ResolveDirectory(config);
+    }
+
+    /// <summary>The directory the store uses for the given configuration (the default if none is set).</summary>
+    public static string ResolveDirectory(IConfiguration config)
     {
         var configured = config[ConfigKey];
-        _directory = string.IsNullOrWhiteSpace(configured)
+        return string.IsNullOrWhiteSpace(configured)
             ? DefaultDirectory
             : Path.GetFullPath(configured);
     }
@@ -78,7 +93,10 @@ public sealed class AutofillStore
     public IReadOnlyList<StoredAutofillFile> List()
     {
         if (!System.IO.Directory.Exists(_directory))
+        {
+            StoreLog.DirectoryMissing(_log, _directory);
             return Array.Empty<StoredAutofillFile>();
+        }
 
         return new DirectoryInfo(_directory)
             .EnumerateFiles("*.csv", SearchOption.TopDirectoryOnly)
@@ -117,7 +135,10 @@ public sealed class AutofillStore
     public async Task<StoredAutofillFile> SaveAsync(string fileName, byte[] content, CancellationToken ct = default)
     {
         if (!IsSafeFileName(fileName))
+        {
+            StoreLog.UnsafeFileName(_log, fileName);
             throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
+        }
 
         var finalPath = await WriteAtomicAsync(fileName, content, ct);
         return ToStored(new FileInfo(finalPath));
@@ -131,13 +152,20 @@ public sealed class AutofillStore
     public bool Delete(string fileName)
     {
         if (!IsSafeFileName(fileName))
+        {
+            StoreLog.UnsafeFileName(_log, fileName);
             throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
+        }
 
         var path = Path.Combine(_directory, fileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, fileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, fileName);
         return true;
     }
 
@@ -159,9 +187,13 @@ public sealed class AutofillStore
     {
         var path = Path.Combine(_directory, RunningOrderFileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, RunningOrderFileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, RunningOrderFileName);
         return true;
     }
 
@@ -193,7 +225,10 @@ public sealed class AutofillStore
     public Task SaveGroupsAsync(string autofillFileName, byte[] json, CancellationToken ct = default)
     {
         if (!IsSafeFileName(autofillFileName))
+        {
+            StoreLog.UnsafeFileName(_log, autofillFileName);
             throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+        }
 
         return WriteAtomicAsync(GroupsFileNameFor(autofillFileName), json, ct);
     }
@@ -202,27 +237,42 @@ public sealed class AutofillStore
     public bool DeleteGroups(string autofillFileName)
     {
         if (!IsSafeFileName(autofillFileName))
+        {
+            StoreLog.UnsafeFileName(_log, autofillFileName);
             throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+        }
 
-        var path = Path.Combine(_directory, GroupsFileNameFor(autofillFileName));
+        var groupsFileName = GroupsFileNameFor(autofillFileName);
+        var path = Path.Combine(_directory, groupsFileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, groupsFileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, groupsFileName);
         return true;
     }
 
     private async Task<string> WriteAtomicAsync(string fileName, byte[] content, CancellationToken ct)
     {
-        System.IO.Directory.CreateDirectory(_directory);
+        StoreLog.WriteStarting(_log, fileName, content.Length);
 
         var finalPath = Path.Combine(_directory, fileName);
         var tempPath = Path.Combine(_directory, $".{fileName}.{Guid.NewGuid():N}.tmp");
 
         try
         {
+            System.IO.Directory.CreateDirectory(_directory);
             await File.WriteAllBytesAsync(tempPath, content, ct);
             File.Move(tempPath, finalPath, overwrite: true);
+            StoreLog.WriteCompleted(_log, fileName, content.Length);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            StoreLog.WriteFailed(_log, ex, fileName, _directory);
+            throw;
         }
         finally
         {
@@ -256,14 +306,17 @@ public sealed class AutofillStore
             using var stream = new FileStream(f.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()[..16];
             _hashCache[f.FullName] = (f.Length, writeTicks, hash);
+            StoreLog.HashComputed(_log, f.Name, hash);
             return hash;
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            StoreLog.HashFailed(_log, ex, f.Name);
             return string.Empty;
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            StoreLog.HashFailed(_log, ex, f.Name);
             return string.Empty;
         }
     }

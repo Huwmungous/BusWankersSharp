@@ -20,6 +20,11 @@
 //             plausible way a household's browsers could hurt each other).
 //             0 disables it.
 
+import { getLog, asError } from '../log';
+
+// Created when used, never at module load (see ../log.js).
+const configLog = (attributes) => getLog('launchConfig', attributes);
+
 export const STORAGE_KEY = 'buswankers.launch.v2';
 // v1 stored leadMs 0 by default; v2 defaults to 200. A browser that still has
 // only v1 gets its url/saleAt carried over and the new default lead.
@@ -72,7 +77,7 @@ function readStorage() {
       if (parsed && typeof parsed === 'object') {
         // Carry over what was typed in; take the new default lead.
         const migrated = sanitise({ url: parsed.url, saleAt: parsed.saleAt, leadMs: DEFAULT_LEAD_MS });
-        console.debug('[launch] migrated v1 settings to v2 (lead reset to default)');
+        configLog({ leadMs: DEFAULT_LEAD_MS }).info('Migrated v1 launch settings to v2 (lead reset to default)');
         // Persist under the new key now, so this runs once rather than on
         // every load until something is edited.
         try {
@@ -86,7 +91,7 @@ function readStorage() {
     }
     return null;
   } catch (err) {
-    console.debug('[launch] localStorage unreadable:', err && err.message);
+    configLog().warn('Launch settings in localStorage could not be read', asError(err));
     return null;
   }
 }
@@ -96,8 +101,9 @@ export function saveConfig(config) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
   } catch (err) {
-    console.debug('[launch] localStorage unwritable:', err && err.message);
+    configLog().warn('Launch settings could not be written to localStorage', asError(err));
   }
+  configLog({ saleAt: clean.saleAt, leadMs: clean.leadMs, staggerMs: clean.staggerMs }).debug('Launch settings saved');
   return clean;
 }
 

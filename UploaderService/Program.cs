@@ -1,3 +1,4 @@
+using Autofills.Common;
 using Autofills.UploaderService;
 using IFGlobal.WebServices;
 
@@ -80,7 +81,34 @@ var app = await ServiceFactory.CreateAsync(new ServiceFactoryOptions
     UseIFLogger = true,
     ClientSecretEnvVar = "BUSWANKERS_CLIENTSECRET",
     SharedEstateService = true,
-    ConfigureServices = (services, context) => services.AddUploadersAuthorisation(context.Configuration)
+    ConfigureServices = (services, context) =>
+    {
+        services.AddUploadersAuthorisation(context.Configuration);
+
+        // One log line per request, from the OUTERMOST position in the pipeline
+        // so 401s/403s answered by the auth middlewares are recorded too - see
+        // RequestLoggingMiddleware.cs for why a ConfigurePipeline hook is too late.
+        services.AddSingleton<IStartupFilter, RequestLoggingStartupFilter>();
+    }
 });
+
+// Start-up and process-level logging. The category begins with "Autofills", so
+// the IFLogger:CategoryOverrides entry in appsettings.json governs it like the rest.
+var startupLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Autofills.UploaderService.Startup");
+
+var storeDirectory = AutofillStore.ResolveDirectory(app.Configuration);
+var configuredGroup = GroupMembership.Normalise(app.Configuration[UploaderAuthorization.GroupSettingKey]);
+StartupLog.ServiceReady(startupLog, app.Environment.EnvironmentName, storeDirectory,
+    Directory.Exists(storeDirectory),
+    configuredGroup.Length > 0 ? configuredGroup : UploaderAuthorization.DefaultGroup);
+
+// Anything that dies off the request path (a background thread, a faulted task
+// nobody awaited) would otherwise vanish, or surface only in the journal.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    if (e.ExceptionObject is Exception unhandled)
+        StartupLog.UnhandledException(startupLog, unhandled, e.IsTerminating);
+};
+TaskScheduler.UnobservedTaskException += (_, e) => StartupLog.UnobservedTaskException(startupLog, e.Exception);
 
 app.Run();

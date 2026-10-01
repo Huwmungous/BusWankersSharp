@@ -76,7 +76,7 @@ public class UploadServiceController : ControllerBase
         // Built here rather than DI-registered: Program.cs bootstraps through
         // IFGlobal's ServiceFactory, and the store is cheap (it's a directory
         // path and a regex), so there's nothing to gain from a singleton.
-        _store = new AutofillStore(config);
+        _store = new AutofillStore(config, log);
     }
 
     [HttpPost("sheets")]
@@ -84,11 +84,13 @@ public class UploadServiceController : ControllerBase
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Sheets([FromForm] IFormFile? file)
     {
-        _log.LogDebug("Sheets requested by {Caller} for upload {Upload} ({Bytes} bytes)",
-            CallerName(), file?.FileName, file?.Length);
+        ControllerLog.SheetsRequested(_log, CallerName(), file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.SheetsRejected(_log, file?.FileName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         try
         {
@@ -96,16 +98,22 @@ public class UploadServiceController : ControllerBase
             var sheets = ExcelFileHelper.ListSaleSheets(stream, file.FileName);
 
             if (sheets.Count == 0)
+            {
+                ControllerLog.SheetsRejected(_log, file.FileName, "no sale sheets found");
                 return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
+            }
 
+            ControllerLog.SheetsListed(_log, file.FileName, sheets.Count, string.Join(", ", sheets));
             return Ok(new { sheets });
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.SheetsRejected(_log, file.FileName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.SheetsFailed(_log, ex, file.FileName);
             return StatusCode(500, new { error = "Failed to read the spreadsheet: " + ex.Message });
         }
     }
@@ -117,14 +125,19 @@ public class UploadServiceController : ControllerBase
         [FromForm] IFormFile? file,
         [FromForm] string? sheetName)
     {
-        _log.LogDebug("Generate requested by {Caller} for upload {Upload} sheet {Sheet}",
-            CallerName(), file?.FileName, sheetName);
+        ControllerLog.GenerateRequested(_log, CallerName(), file?.FileName, sheetName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.GenerateRejected(_log, file?.FileName, sheetName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         if (string.IsNullOrWhiteSpace(sheetName))
+        {
+            ControllerLog.GenerateRejected(_log, file.FileName, sheetName, "no sheet name given");
             return BadRequest(new { error = "sheetName is required - call /sheets first to get the list for this file." });
+        }
 
         var maxInAGroup = MaxInAGroupFor(sheetName);
 
@@ -145,6 +158,7 @@ public class UploadServiceController : ControllerBase
             // /generate directly to notice something's worth checking.
             Response.Headers["X-Lead-Booker-Warning-Count"] = warnings.Count.ToString();
 
+            ControllerLog.Generated(_log, file.FileName, sheetName.Trim(), groups.Count, warnings.Count, bytes.Length, downloadName);
 
             return File(bytes, "text/csv", downloadName);
         }
@@ -153,10 +167,12 @@ public class UploadServiceController : ControllerBase
             // Anything ReadSheetGroups/SheetRegistrationReader threw deliberately -
             // no matching sheet, no header row, a group over the size limit. These
             // messages are written to be shown directly to the person uploading.
+            ControllerLog.GenerateRejected(_log, file.FileName, sheetName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.GenerateFailed(_log, ex, file.FileName, sheetName);
             return StatusCode(500, new { error = "Failed to process the spreadsheet: " + ex.Message });
         }
     }
@@ -176,11 +192,15 @@ public class UploadServiceController : ControllerBase
     {
         // Who ingested what is worth having in the log: an ingest replaces the
         // live files every bookmarklet and extension reads from.
-        _log.LogInformation("Ingest requested by {Caller} for upload {Upload} ({Bytes} bytes)",
-            CallerName(), file?.FileName, file?.Length);
+        var caller = CallerName();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        ControllerLog.IngestRequested(_log, caller, file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.IngestRejected(_log, caller, file?.FileName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         // The workbook is read once per sheet (ListSaleSheets, then ReadSheetGroups
         // for each), so buffer the bytes once. Each read gets its OWN MemoryStream
@@ -195,6 +215,8 @@ public class UploadServiceController : ControllerBase
             workbookBytes = buffer.ToArray();
         }
 
+        ControllerLog.IngestBuffered(_log, file.FileName, workbookBytes.Length);
+
         List<string> sheets;
         try
         {
@@ -203,21 +225,29 @@ public class UploadServiceController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.IngestRejected(_log, caller, file.FileName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.IngestListFailed(_log, ex, file.FileName);
             return StatusCode(500, new { error = "Failed to read the spreadsheet: " + ex.Message });
         }
 
         if (sheets.Count == 0)
+        {
+            ControllerLog.IngestRejected(_log, caller, file.FileName, "no sale sheets found");
             return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
+        }
+
+        ControllerLog.IngestSheetsFound(_log, file.FileName, sheets.Count, string.Join(", ", sheets));
 
         var results = new List<IngestResult>(sheets.Count);
         foreach (var sheetName in sheets)
         {
             var filename = DownloadNameFor(sheetName);
             var maxInAGroup = MaxInAGroupFor(sheetName);
+            ControllerLog.IngestSheetStarting(_log, file.FileName, sheetName.Trim(), filename, maxInAGroup);
             try
             {
                 using var sheetStream = new MemoryStream(workbookBytes, writable: false);
@@ -240,8 +270,7 @@ public class UploadServiceController : ControllerBase
                 var groupsJson = JsonSerializer.SerializeToUtf8Bytes(ToGroupsDocument(groups, saleFolderLabel), JsonOptions);
                 await _store.SaveGroupsAsync(filename, groupsJson, ct);
 
-                _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
-                    sheetName, stored.Filename, groups.Count, stored.Size, file.FileName);
+                ControllerLog.IngestSheetOk(_log, sheetName.Trim(), stored.Filename, groups.Count, stored.Size, warnings.Count, file.FileName);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Ok, groups.Count, null, Warnings: warnings));
             }
             catch (EmptySheetException ex)
@@ -260,15 +289,13 @@ public class UploadServiceController : ControllerBase
                 }
                 catch (Exception delEx)
                 {
-                    _log.LogError(delEx, "Clearing {File} for emptied sheet '{Sheet}' failed", filename, sheetName);
+                    ControllerLog.IngestClearFailed(_log, delEx, sheetName.Trim(), filename);
                     results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0,
                         "The sheet is empty but the existing file could not be removed: " + delEx.Message));
                     continue;
                 }
 
-                if (cleared)
-                    _log.LogInformation("Sheet '{Sheet}' is empty - removed {File} from the store (from {Upload})",
-                        sheetName, filename, file.FileName);
+                ControllerLog.IngestSheetEmpty(_log, sheetName.Trim(), filename, cleared, file.FileName);
 
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Empty, 0, ex.Message, cleared));
             }
@@ -276,21 +303,32 @@ public class UploadServiceController : ControllerBase
             {
                 // Deliberate, user-facing message from the reader - report it against
                 // this sheet and carry on with the next.
+                ControllerLog.IngestSheetRejected(_log, sheetName.Trim(), filename, ex.Message);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, ex.Message));
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Ingest of sheet '{Sheet}' from {Upload} failed", sheetName, file.FileName);
+                ControllerLog.IngestSheetFailed(_log, ex, sheetName.Trim(), filename, file.FileName);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, "Failed to process this sheet: " + ex.Message));
             }
         }
 
         var runningOrder = await IngestRosterAsync(workbookBytes, file.FileName, ct);
 
+        var okCount = results.Count(r => r.Status == IngestStatus.Ok);
+        var emptyCount = results.Count(r => r.Status == IngestStatus.Empty);
+        var failedCount = results.Count(r => r.Status == IngestStatus.Failed);
+        timer.Stop();
+        ControllerLog.IngestFinished(_log, caller, file.FileName, results.Count, okCount, emptyCount, failedCount,
+            runningOrder.Status.ToString(), timer.ElapsedMilliseconds);
+
         // 400 only when nothing was ingested AND something actually failed; a
         // workbook whose sale tabs are all still empty is a successful no-op.
-        if (results.All(r => r.Status != IngestStatus.Ok) && results.Any(r => r.Status == IngestStatus.Failed))
+        if (okCount == 0 && failedCount > 0)
+        {
+            ControllerLog.IngestNothingIngested(_log, caller, file.FileName, failedCount);
             return BadRequest(new { error = "No sheet could be ingested.", results, runningOrder });
+        }
 
         return Ok(new { results, runningOrder });
     }
@@ -321,29 +359,31 @@ public class UploadServiceController : ControllerBase
             }
             catch (Exception delEx)
             {
-                _log.LogError(delEx, "Clearing the running order for an emptied roster sheet failed (from {Upload})", uploadName);
+                ControllerLog.RosterClearFailed(_log, delEx, uploadName);
                 return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false,
                     "The roster sheet is empty but the stored running order could not be removed: " + delEx.Message);
             }
 
-            if (cleared)
-                _log.LogInformation("Roster sheet is empty - removed {File} from the store (from {Upload})",
-                    AutofillStore.RunningOrderFileName, uploadName);
+            ControllerLog.RosterEmpty(_log, AutofillStore.RunningOrderFileName, cleared, uploadName);
 
             return new RunningOrderResult(IngestStatus.Empty, null, null, 0, cleared, ex.Message);
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.RosterRejected(_log, uploadName, ex.Message);
             return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, ex.Message);
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Reading the roster sheet from {Upload} failed", uploadName);
+            ControllerLog.RosterReadFailed(_log, ex, uploadName);
             return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, "Failed to read the roster sheet: " + ex.Message);
         }
 
         if (roster == null)
+        {
+            ControllerLog.RosterSkipped(_log, uploadName);
             return new RunningOrderResult(IngestStatus.Skipped, null, null, 0, false, "No 'Glasto nnnn' roster sheet in this workbook - the stored running order is unchanged.");
+        }
 
         try
         {
@@ -356,14 +396,13 @@ public class UploadServiceController : ControllerBase
             var json = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
             await _store.SaveRunningOrderAsync(json, ct);
 
-            _log.LogInformation("Ingested roster sheet '{Sheet}' -> {File} (year {Year}, {People} people) from {Upload}",
-                roster.SheetName, AutofillStore.RunningOrderFileName, roster.Year, roster.Entries.Count, uploadName);
+            ControllerLog.RosterIngested(_log, roster.SheetName, AutofillStore.RunningOrderFileName, roster.Year, roster.Entries.Count, uploadName);
 
             return new RunningOrderResult(IngestStatus.Ok, roster.Year, roster.SheetName, roster.Entries.Count, false, null);
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Saving the running order from {Upload} failed", uploadName);
+            ControllerLog.RosterSaveFailed(_log, ex, uploadName);
             return new RunningOrderResult(IngestStatus.Failed, roster.Year, roster.SheetName, 0, false, "Failed to save the running order: " + ex.Message);
         }
     }
@@ -379,6 +418,7 @@ public class UploadServiceController : ControllerBase
     public IActionResult RunningOrder()
     {
         var path = _store.RunningOrderPath;
+        ControllerLog.RunningOrderRequested(_log, path != null);
         if (path == null)
             return NotFound(new { error = "No roster sheet has been ingested yet." });
 
@@ -392,11 +432,13 @@ public class UploadServiceController : ControllerBase
     {
         try
         {
-            return Ok(new { files = _store.List() });
+            var files = _store.List();
+            ControllerLog.FilesListed(_log, _store.Directory, files.Count, string.Join(", ", files.Select(f => f.Filename)));
+            return Ok(new { files });
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Listing the autofill store at {Dir} failed", _store.Directory);
+            ControllerLog.FilesListFailed(_log, ex, _store.Directory);
             return StatusCode(500, new { error = "Failed to list the autofill files: " + ex.Message });
         }
     }
@@ -411,12 +453,20 @@ public class UploadServiceController : ControllerBase
     [HttpGet("files/{filename}")]
     public IActionResult Download(string filename)
     {
+        ControllerLog.DownloadRequested(_log, filename);
+
         if (!AutofillStore.IsSafeFileName(filename))
+        {
+            ControllerLog.DownloadRefused(_log, filename);
             return BadRequest(new { error = "Not a valid autofill filename." });
+        }
 
         var path = _store.PathOf(filename);
         if (path == null)
+        {
+            ControllerLog.DownloadNotFound(_log, filename);
             return NotFound(new { error = $"No autofill file '{filename}' has been ingested yet." });
+        }
 
         Response.Headers.CacheControl = "no-cache";
 
@@ -427,6 +477,8 @@ public class UploadServiceController : ControllerBase
         var hash = _store.HashOfStored(filename);
         if (!string.IsNullOrEmpty(hash))
             Response.Headers["X-Autofill-Hash"] = hash;
+
+        ControllerLog.DownloadServed(_log, filename, hash ?? string.Empty);
 
         return PhysicalFile(path, "text/csv", filename);
     }
@@ -450,14 +502,23 @@ public class UploadServiceController : ControllerBase
     [HttpGet("files/{filename}/groups")]
     public IActionResult DownloadGroups(string filename)
     {
+        ControllerLog.GroupsRequested(_log, filename);
+
         if (!AutofillStore.IsSafeFileName(filename))
+        {
+            ControllerLog.GroupsRefused(_log, filename);
             return BadRequest(new { error = "Not a valid autofill filename." });
+        }
 
         var path = _store.PathOfGroups(filename);
         if (path == null)
+        {
+            ControllerLog.GroupsNotFound(_log, filename);
             return NotFound(new { error = $"No group data for '{filename}' has been ingested yet." });
+        }
 
         Response.Headers.CacheControl = "no-cache";
+        ControllerLog.GroupsServed(_log, filename);
         return PhysicalFile(path, "application/json");
     }
 

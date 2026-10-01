@@ -15,6 +15,10 @@ import ReactDOM from 'react-dom/client';
 import { AppInitializer } from '@if/web-common-react';
 import App from './App';
 import { AuthLoading, AuthRedirecting, AuthError } from './auth/AuthStatus';
+import { getLog, asError, installGlobalErrorLogging } from './log';
+
+// Before anything renders, so an error thrown during start-up is logged too.
+installGlobalErrorLogging();
 
 // The estate's name for this application - what ConfigWebService keys the
 // sign-in settings (Keycloak realm, client, authority) on, and the same value as
@@ -71,7 +75,7 @@ if ('serviceWorker' in navigator) {
     const swUrl = `${import.meta.env.BASE_URL}service-worker.js`;
     navigator.serviceWorker
       .register(swUrl)
-      .then((reg) => console.log('Service Worker registered for PWA install', reg.scope))
-      .catch((err) => console.error('Service Worker registration failed:', err));
+      .then((reg) => getLog('ServiceWorker', { scope: reg.scope }).info('Service worker registered for PWA install'))
+      .catch((err) => getLog('ServiceWorker', { swUrl }).error('Service worker registration failed', asError(err)));
   });
 }

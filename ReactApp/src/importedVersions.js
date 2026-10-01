@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { getLog, asError } from './log';
+
+// Created when used, never at module load (see ./log.js). Declared above
+// everything that calls it.
+const versionsLog = (attributes) => getLog('importedVersions', attributes);
 
 // Which version of each sale's autofill file THIS BROWSER last took, so the
 // Documentation tab can say "there's a newer file than the one you imported".
@@ -38,7 +43,7 @@ const writeTaken = (taken) => {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(taken));
   } catch (err) {
-    console.debug('[updates] could not remember the imported version:', err && err.message);
+    versionsLog().warn('Could not remember the imported version', asError(err));
   }
 };
 
@@ -85,7 +90,7 @@ export function useImportedVersions() {
   const markTaken = useCallback((filename, file) => {
     if (!filename || !file) return;
     const entry = entryFor(file);
-    console.debug('[updates] recording taken version', filename, entry.hash || entry.lastModified);
+    versionsLog({ fileName: filename, hash: entry.hash, lastModified: entry.lastModified }).info('Recording taken version');
     writeTaken({ ...readTaken(), [filename]: entry });
     setTaken((prev) => ({ ...prev, [filename]: entry }));
   }, []);

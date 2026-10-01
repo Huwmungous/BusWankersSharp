@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { correctedNow, scheduleAt, syncClock } from '../launch/clock';
 import { buildLaunchLink, loadConfig, saveConfig } from '../launch/config';
 import { formatLondon, formatLondonClock, londonWallToEpoch } from '../launch/londonTime';
+import { getLog, asError } from '../log';
 import './LaunchSection.css';
+
+// Created when used, never at module load (see ../log.js). Declared above the
+// component and every handler that calls it. Timing note: the one log on the
+// fire path (in fireLaunch) comes AFTER the launch window has been navigated.
+const launchLog = (attributes) => getLog('LaunchSection', attributes);
 
 // The "Launcher" tab: arm this browser to open the ticket page, in a window of
 // its own, at the sale time - on NTP-corrected time.
@@ -145,11 +151,12 @@ const LaunchSection = ({ year }) => {
       setSync(result);
       setSyncStatus('ready');
       setSyncError('');
-      console.debug('[launch] clock synced', result);
+      launchLog({ offsetMs: result.offsetMs, rttMs: result.rttMs, samples: result.samples, spreadMs: result.spreadMs })
+        .debug('Clock synced');
     } catch (err) {
       setSyncStatus('error');
       setSyncError(err.message || 'Clock sync failed.');
-      console.debug('[launch] clock sync failed:', err && err.message);
+      launchLog().warn('Clock sync failed', asError(err));
     }
   }, []);
 
@@ -179,9 +186,9 @@ const LaunchSection = ({ year }) => {
       wakeLockRef.current.addEventListener('release', () => {
         wakeLockRef.current = null;
       });
-      console.debug('[launch] screen wake lock acquired');
+      launchLog().debug('Screen wake lock acquired');
     } catch (err) {
-      console.debug('[launch] wake lock refused:', err && err.message);
+      launchLog().warn('Screen wake lock refused', asError(err));
     }
   }, []);
 
@@ -210,9 +217,10 @@ const LaunchSection = ({ year }) => {
     try {
       w = window.open('', LAUNCH_WINDOW_NAME);
     } catch (err) {
-      console.debug('[launch] window.open threw:', err && err.message);
+      launchLog().error('window.open threw while opening the launch window', asError(err));
     }
     if (!w) {
+      launchLog().warn('Launch window blocked by the browser (pop-up blocker?)');
       launchWindowRef.current = null;
       setLaunchWindowOpen(false);
       return false;
@@ -223,7 +231,7 @@ const LaunchSection = ({ year }) => {
       w.document.close();
     } catch (err) {
       // A stale window on another origin - still ours to navigate later.
-      console.debug('[launch] could not write holding page:', err && err.message);
+      launchLog().warn('Could not write the holding page into the launch window', asError(err));
     }
     launchWindowRef.current = w;
     setLaunchWindowOpen(true);
@@ -255,6 +263,12 @@ const LaunchSection = ({ year }) => {
     let how = 'launch window';
     const w = launchWindowRef.current;
     let done = false;
+    // Problems on the fire path are remembered here and logged afterwards, once
+    // the launch window has been navigated (or a fresh one opened) - nothing is
+    // logged between the moment and that jump. Only the last-resort fallback,
+    // this tab navigating itself, follows the log line, as it did the old one.
+    let navigationError = null;
+    let openError = null;
     if (w && !w.closed) {
       try {
         w.location.href = url;
@@ -265,7 +279,7 @@ const LaunchSection = ({ year }) => {
           // focus is best-effort
         }
       } catch (err) {
-        console.debug('[launch] launch window navigation failed:', err && err.message);
+        navigationError = err;
       }
     }
     if (!done) {
@@ -274,7 +288,8 @@ const LaunchSection = ({ year }) => {
       let fresh = null;
       try {
         fresh = window.open(url, LAUNCH_WINDOW_NAME);
-      } catch {
+      } catch (err) {
+        openError = err;
         fresh = null;
       }
       if (fresh) {
@@ -283,7 +298,16 @@ const LaunchSection = ({ year }) => {
         done = true;
       }
     }
-    console.debug(`[launch] FIRED via ${via}, ${lateMs.toFixed(1)} ms after the (lead ${config.leadMs} ms, stagger +${staggerDraw} ms) moment -> ${url} (${done ? how : 'this tab'})`);
+    if (navigationError) launchLog().error('Launch window navigation failed', asError(navigationError));
+    if (openError) launchLog().error('Opening a fresh launch window failed', asError(openError));
+    launchLog({
+      via,
+      lateMs: lateMs.toFixed(1),
+      leadMs: config.leadMs,
+      staggerMs: staggerDraw,
+      rehearsal,
+      how: done ? how : 'this tab',
+    }).info('Launch FIRED');
     setFired({ via, lateMs, how: done ? how : 'this tab', rehearsal, staggerMs: staggerDraw });
     setArmed(false);
     setRehearsalTarget(null);
@@ -329,19 +353,30 @@ const LaunchSection = ({ year }) => {
       : 'The browser blocked the launch window - allow pop-ups for this site and arm again. Until then, this tab itself will jump at the moment.');
     setArmed(true);
     acquireWakeLock();
-    console.debug(`[launch] ${rehearsal ? 'REHEARSAL ' : ''}armed for ${formatLondon(whenMs)} (lead ${config.leadMs} ms, stagger +${draw} of up to ${config.staggerMs} ms), launch window ${opened ? 'open' : 'BLOCKED'}`);
+    launchLog({
+      rehearsal,
+      armedFor: formatLondon(whenMs),
+      leadMs: config.leadMs,
+      staggerDrawMs: draw,
+      staggerMaxMs: config.staggerMs,
+      launchWindow: opened ? 'open' : 'blocked',
+    }).info('Launch armed');
   };
 
   const arm = () => {
+    launchLog({ saleAt: config.saleAt, urlOk }).debug('Arm requested');
     if (!urlOk) {
+      launchLog().warn('Arm refused - the ticket URL is not a full http(s) address');
       setNotice('The ticket URL needs to be a full http(s) address.');
       return;
     }
     if (saleMs == null) {
+      launchLog().warn('Arm refused - no sale time set');
       setNotice('Set the sale time first.');
       return;
     }
     if (!saleInFuture) {
+      launchLog({ saleAt: config.saleAt }).warn('Arm refused - the sale time has already passed');
       setNotice('That sale time has already passed.');
       return;
     }
@@ -352,7 +387,9 @@ const LaunchSection = ({ year }) => {
   // time - the saved settings are untouched, so a rehearsal can't leave a
   // wrong date behind.
   const rehearse = () => {
+    launchLog({ urlOk }).debug('Rehearsal requested');
     if (!urlOk) {
+      launchLog().warn('Rehearsal refused - the ticket URL is not a full http(s) address');
       setNotice('The ticket URL needs to be a full http(s) address.');
       return;
     }
@@ -365,16 +402,18 @@ const LaunchSection = ({ year }) => {
     releaseWakeLock();
     closeLaunchWindow();
     setNotice('Disarmed.');
-    console.debug('[launch] disarmed');
+    launchLog({ rehearsal: rehearsalTarget != null }).info('Launch disarmed');
   };
 
   const copyLink = async () => {
     const link = buildLaunchLink(config);
     try {
       await navigator.clipboard.writeText(link);
+      launchLog().debug('Launch link copied to the clipboard');
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
+    } catch (err) {
+      launchLog().warn('Copying the launch link failed', asError(err));
       setNotice('Copy failed - select the link below and copy it by hand.');
     }
   };

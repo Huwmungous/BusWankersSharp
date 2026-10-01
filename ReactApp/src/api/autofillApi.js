@@ -6,7 +6,7 @@
 // holly's nginx to the UploaderService backend running on intelligence. See
 // ops/nginx/buswankers-api.inc. Fixed from the domain root rather than built off
 // PUBLIC_URL, since this API isn't served under /buswankers/ itself.
-import { LoggerService } from '@if/web-common';
+import { getLog, asError } from '../log';
 import { parseAutofillCsv } from '../bookmarklet';
 
 export const API_BASE = '/buswankers-api/api/autofill';
@@ -17,16 +17,41 @@ export const API_BASE = '/buswankers-api/api/autofill';
 // token itself. Every route on the server needs it (the read routes were
 // protected too on 2026-09-29), so a 401 here means the session has expired.
 
-// Created on demand rather than at module load: LoggerService configures itself
-// from the config service the first time it's used, and that is only ready once
-// AppInitializer has finished. Every call is made from a component or handler
-// that runs after that, so this is always safe - a module-level logger would
-// not be. Attributes go in as context fields (searchable in the log viewer)
-// rather than being spliced into the message text.
-const apiLog = (context) => {
-  const base = LoggerService.create('autofillApi');
-  return context ? base.withContext(context) : base;
-};
+// Created on demand rather than at module load (see ../log.js): the logger is
+// only configured once AppInitializer has finished. Every call is made from a
+// component or handler that runs after that, so this is always safe - a
+// module-level logger would not be. Attributes go in as context fields
+// (searchable in the log viewer) rather than being spliced into the message.
+const apiLog = (attributes) => getLog('autofillApi', attributes);
+
+// Times a request and logs it either way: the route and method going out, then
+// the status and elapsed time coming back, or the network failure. One place so
+// no call in this file can go unlogged. Resolves to the Response exactly as
+// fetch() would; rethrows a network failure after logging it.
+async function loggedFetch(route, url, init) {
+  const method = (init && init.method) || 'GET';
+  const startedAt = performance.now();
+  apiLog({ route, method }).debug('Request starting');
+  try {
+    const response = await fetch(url, init);
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    const attributes = { route, method, status: response.status, elapsedMs };
+    if (response.ok) {
+      apiLog(attributes).debug('Request completed');
+    } else if (response.status === 401 || response.status === 403 || response.status === 404) {
+      // Expected states (expired session, not an uploader, nothing ingested yet)
+      // - worth seeing, not worth an alarm.
+      apiLog(attributes).info('Request answered with a refusal or not-found');
+    } else {
+      apiLog(attributes).warn('Request failed');
+    }
+    return response;
+  } catch (err) {
+    apiLog({ route, method, elapsedMs: Math.round(performance.now() - startedAt) })
+      .error('Request could not reach the server', asError(err));
+    throw err;
+  }
+}
 
 // Shown when the server turns a request away for want of a valid sign-in.
 // Exported so the components can recognise it if they ever need to.
@@ -73,7 +98,7 @@ export async function readErrorMessage(response, fallback) {
 // changed; '' when the server couldn't work one out. A sale whose filename
 // isn't in the map is "empty" (nothing ingested for it yet).
 export async function fetchStoredFiles() {
-  const response = await fetch(`${API_BASE}/files`, { cache: 'no-store' });
+  const response = await loggedFetch('files', `${API_BASE}/files`, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
@@ -82,6 +107,7 @@ export async function fetchStoredFiles() {
   for (const f of body.files || []) {
     map.set(f.filename, f);
   }
+  apiLog({ files: map.size }).debug('File listing parsed');
   return map;
 }
 
@@ -113,13 +139,12 @@ function normaliseRunningOrderResult(r) {
 // the fetch interceptor attaches to this request. Don't set a Content-Type
 // header here - the browser must add the multipart boundary itself.
 export async function ingestWorkbook(file) {
-  apiLog({ fileName: file && file.name, fileBytes: file && file.size }).debug('Ingest request starting');
+  apiLog({ fileName: file && file.name, fileBytes: file && file.size }).info('Ingest requested');
 
   const form = new FormData();
   form.append('file', file);
 
-  const response = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: form });
-  apiLog({ status: response.status, ok: response.ok }).debug('Ingest response received');
+  const response = await loggedFetch('ingest', `${API_BASE}/ingest`, { method: 'POST', body: form });
   if (response.status === 403) {
     // Authorisation, not a problem with the workbook: no per-sheet results to show.
     apiLog({ status: response.status, group: 'uploaders' }).warn('Ingest refused - not in the uploaders group');
@@ -136,21 +161,29 @@ export async function ingestWorkbook(file) {
         const body = await response.json();
         if (body && body.error) message = body.error;
         if (body && Array.isArray(body.results)) results = body.results.map(normaliseIngestResult);
-      } catch {
-        // fall through with the generic message
+      } catch (parseErr) {
+        apiLog({ status: response.status }).debug('Ingest error body was not readable JSON', asError(parseErr));
       }
     } else {
       message = await readErrorMessage(response, message);
     }
+    apiLog({ status: response.status, sheetResults: results.length, reason: message }).warn('Ingest rejected by the server');
     const err = new Error(message);
     err.results = results;
     throw err;
   }
   const body = await response.json();
-  return {
+  const normalised = {
     results: (body.results || []).map(normaliseIngestResult),
     runningOrder: normaliseRunningOrderResult(body.runningOrder),
   };
+  apiLog({
+    sheets: normalised.results.length,
+    ok: normalised.results.filter((r) => r.status === 'ok').length,
+    failed: normalised.results.filter((r) => r.status === 'failed').length,
+    rosterStatus: normalised.runningOrder ? normalised.runningOrder.status : 'none',
+  }).info('Ingest response parsed');
+  return normalised;
 }
 
 // GET /running-order -> { year, sheet, generatedAt, entries: [{ regNumber,
@@ -159,14 +192,19 @@ export async function ingestWorkbook(file) {
 // for that, which is a normal state rather than an error). postCode is ''
 // when the roster sheet has no 'Postcode' column (2026-09-18).
 export async function fetchRunningOrder() {
-  const response = await fetch(`${API_BASE}/running-order`, { cache: 'no-store' });
+  const response = await loggedFetch('running-order', `${API_BASE}/running-order`, { cache: 'no-store' });
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
   const body = await response.json();
-  if (!body || typeof body.year !== 'number') return null;
-  return { ...body, entries: Array.isArray(body.entries) ? body.entries : [] };
+  if (!body || typeof body.year !== 'number') {
+    apiLog().warn('Running order response had no usable year - treating as not ingested');
+    return null;
+  }
+  const entries = Array.isArray(body.entries) ? body.entries : [];
+  apiLog({ year: body.year, people: entries.length }).debug('Running order parsed');
+  return { ...body, entries };
 }
 
 // Departure point per group (2026-09-29), read from the groups sidecar that
@@ -182,9 +220,9 @@ async function fetchGroupDepartures(filename) {
   const byLabel = new Map();
   const byCode = new Map();
   try {
-    const response = await fetch(`${API_BASE}/files/${encodeURIComponent(filename)}/groups`, { cache: 'no-store' });
+    const response = await loggedFetch('files/groups', `${API_BASE}/files/${encodeURIComponent(filename)}/groups`, { cache: 'no-store' });
     if (!response.ok) {
-      console.debug('[departure] groups sidecar not available for', filename, response.status);
+      apiLog({ fileName: filename, status: response.status }).debug('Groups sidecar not available - no departures');
       return { byLabel, byCode };
     }
     const body = await response.json();
@@ -194,9 +232,9 @@ async function fetchGroupDepartures(filename) {
       if (g.label) byLabel.set(String(g.label).toLowerCase(), departure);
       if (g.code) byCode.set(String(g.code).toLowerCase(), departure);
     }
-    console.debug('[departure] loaded for', filename, { withDeparture: byLabel.size });
+    apiLog({ fileName: filename, withDeparture: byLabel.size }).debug('Group departures loaded');
   } catch (err) {
-    console.debug('[departure] could not load for', filename, err && err.message);
+    apiLog({ fileName: filename }).warn('Group departures could not be loaded', asError(err));
   }
   return { byLabel, byCode };
 }
@@ -207,13 +245,14 @@ async function fetchGroupDepartures(filename) {
 // button uses; null if the file isn't in the store. Each group also carries
 // `departure` ('' when it has none - see fetchGroupDepartures).
 export async function fetchAutofillGroups(filename) {
-  const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
+  const response = await loggedFetch('files/{file}', downloadUrlFor(filename), { cache: 'no-store' });
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
   const text = await response.text();
   const groups = parseAutofillCsv(text);
+  apiLog({ fileName: filename, bytes: text.length, groups: groups.length }).debug('Autofill file parsed into groups');
 
   const { byLabel, byCode } = await fetchGroupDepartures(filename);
   return groups.map((g) => ({
@@ -253,12 +292,13 @@ export function groupsUrlFor(filename) {
 // the earlier file listing - so a file re-ingested between the listing and
 // the click is recorded as what was really downloaded.
 export async function downloadStoredFile(filename) {
-  const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
+  const response = await loggedFetch('files/{file}', downloadUrlFor(filename), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Download failed (${response.status}).`));
   }
   const hash = response.headers.get('X-Autofill-Hash') || '';
   const blob = await response.blob();
+  apiLog({ fileName: filename, bytes: blob.size, hash }).info('Stored file downloaded');
   saveBlob(blob, filename);
   return { hash };
 }

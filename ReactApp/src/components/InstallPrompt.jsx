@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { getLog } from '../log';
 import './InstallPrompt.css';
+
+// Created when used, never at module load: the logger is only configured once
+// AppInitializer has run (see log.js).
+const installLog = (attributes) => getLog('InstallPrompt', attributes);
 
 // State that tracks whether a PWA is installable:
 // - deferredPrompt: the prompt object given by the 'beforeinstallprompt' event
@@ -17,6 +22,7 @@ const InstallPrompt = () => {
     const onBeforeInstallPrompt = (e) => {
       e.preventDefault();
       deferredPrompt = e;
+      installLog({ previouslyDismissed: dismissed }).info('Browser offered to install the app');
       // If user hasn't dismissed yet, show the banner
       if (!dismissed) setShow(true);
     };
@@ -26,15 +32,20 @@ const InstallPrompt = () => {
   }, []);
 
   const install = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      installLog().warn('Install clicked but no install prompt is available');
+      return;
+    }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     // outcome is 'accepted' or 'dismissed'
+    installLog({ outcome }).info('Install prompt answered');
     deferredPrompt = null;
     setShow(false);
   };
 
   const dismiss = () => {
+    installLog().debug('Install banner dismissed');
     dismissed = true;
     try { localStorage.setItem('bw-install-dismissed', 'true'); } catch {}
     setShow(false);
