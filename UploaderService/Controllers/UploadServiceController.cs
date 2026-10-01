@@ -68,11 +68,19 @@ public class UploadServiceController : ControllerBase
     private readonly IConfiguration _config;
     private readonly ILogger<UploadServiceController> _log;
     private readonly AutofillStore _store;
+    private readonly AutofillChangeNotifier _notifier;
 
-    public UploadServiceController(IConfiguration config, ILogger<UploadServiceController> log)
+    // How often an events stream says something when there is nothing to say. It
+    // must stay well under holly's nginx proxy_read_timeout (60s by default), or
+    // nginx would close an idle stream; the page reconnects if one is dropped,
+    // but a heartbeat means that rarely has to happen.
+    private static readonly TimeSpan EventsHeartbeat = TimeSpan.FromSeconds(20);
+
+    public UploadServiceController(IConfiguration config, ILogger<UploadServiceController> log, AutofillChangeNotifier notifier)
     {
         _config = config;
         _log = log;
+        _notifier = notifier;
         // Built here rather than DI-registered: Program.cs bootstraps through
         // IFGlobal's ServiceFactory, and the store is cheap (it's a directory
         // path and a regex), so there's nothing to gain from a singleton.
@@ -322,6 +330,19 @@ public class UploadServiceController : ControllerBase
         ControllerLog.IngestFinished(_log, caller, file.FileName, results.Count, okCount, emptyCount, failedCount,
             runningOrder.Status.ToString(), timer.ElapsedMilliseconds);
 
+        // Tell every open page the stored files may have changed, so its "update
+        // available" listing refreshes without anyone polling. Published even when
+        // the request goes on to answer 400 below if anything was written, because a
+        // partly-successful ingest still changed the store. A false positive (say a
+        // roster that was already empty) only costs each page one quiet re-read.
+        var storeChanged = results.Any(r => r.Status == IngestStatus.Ok || r.Cleared)
+            || runningOrder.Status is IngestStatus.Ok or IngestStatus.Empty;
+        if (storeChanged)
+        {
+            var change = _notifier.Publish("ingest");
+            ControllerLog.ChangePublished(_log, change.Sequence, change.Reason, _notifier.SubscriberCount);
+        }
+
         // 400 only when nothing was ingested AND something actually failed; a
         // workbook whose sale tabs are all still empty is a successful no-op.
         if (okCount == 0 && failedCount > 0)
@@ -331,6 +352,92 @@ public class UploadServiceController : ControllerBase
         }
 
         return Ok(new { results, runningOrder });
+    }
+
+    /// <summary>
+    /// GET /events - a Server-Sent Events stream that says "the stored autofill
+    /// files changed" the moment an ingest finishes, so open pages can refresh
+    /// instead of polling. Needs the same bearer token as everything else, which is
+    /// why the page reads it with fetch rather than EventSource.
+    ///
+    /// Frames: "hello" on connect (carries the current sequence), "files-changed"
+    /// per ingest, and a ": keepalive" comment every 20s so nginx doesn't time the
+    /// idle stream out. X-Accel-Buffering: no stops nginx holding frames back.
+    /// A page that was disconnected reconnects and re-reads the files anyway, so
+    /// a missed frame is never a lost update.
+    /// </summary>
+    [HttpGet("events")]
+    public async Task Events(CancellationToken ct)
+    {
+        var caller = CallerName();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var delivered = 0;
+        var how = "client-disconnected";
+
+        Response.StatusCode = StatusCodes.Status200OK;
+        Response.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        using var subscription = _notifier.Subscribe();
+        ControllerLog.EventsOpened(_log, caller, _notifier.SubscriberCount, _notifier.Sequence);
+
+        try
+        {
+            await WriteFrameAsync("event: hello\ndata: {\"sequence\":" + _notifier.Sequence + "}\n\n", ct);
+
+            while (!ct.IsCancellationRequested)
+            {
+                using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                wait.CancelAfter(EventsHeartbeat);
+                try
+                {
+                    if (!await subscription.Reader.WaitToReadAsync(wait.Token))
+                    {
+                        how = "server-completed";
+                        break;
+                    }
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    // Only the heartbeat timer fired: say something so the proxy sees traffic.
+                    await WriteFrameAsync(": keepalive\n\n", ct);
+                    continue;
+                }
+
+                while (subscription.Reader.TryRead(out var change))
+                {
+                    var json = JsonSerializer.Serialize(new { sequence = change.Sequence, at = change.At, reason = change.Reason }, JsonOptions);
+                    await WriteFrameAsync("event: files-changed\ndata: " + json + "\n\n", ct);
+                    delivered++;
+                    ControllerLog.EventDelivered(_log, caller, change.Sequence);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The browser went away (tab closed, navigated, token refresh reload) - normal.
+        }
+        catch (IOException)
+        {
+            how = "write-failed";
+        }
+        catch (Exception ex)
+        {
+            how = "failed";
+            ControllerLog.EventsFailed(_log, ex, caller);
+        }
+        finally
+        {
+            subscription.Dispose();
+            ControllerLog.EventsClosed(_log, caller, how, timer.ElapsedMilliseconds, delivered, _notifier.SubscriberCount);
+        }
+    }
+
+    private async Task WriteFrameAsync(string frame, CancellationToken ct)
+    {
+        await Response.WriteAsync(frame, Encoding.UTF8, ct);
+        await Response.Body.FlushAsync(ct);
     }
 
     /// <summary>

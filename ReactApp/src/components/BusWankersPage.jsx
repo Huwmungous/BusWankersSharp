@@ -6,6 +6,7 @@ import LaunchSection from './LaunchSection';
 import RunningOrderSection from './RunningOrderSection';
 import TestSection from './TestSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
+import { subscribeToFileChanges } from '../autofillEvents';
 import { DEFAULT_YEAR } from '../festival';
 import { useIsUploader } from '../auth/uploaders';
 import { useActiveTab } from '../tabs';
@@ -135,6 +136,46 @@ const BusWankersPage = () => {
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [recheckFiles]);
+
+  // The running order half of a server signal. Quiet like refreshFiles: a
+  // failure keeps what is on screen rather than replacing it with an error.
+  // Declared before onServerSignal and the subscription effect that use it.
+  const refreshRunningOrderQuietly = useCallback(async () => {
+    try {
+      const roster = await fetchRunningOrder();
+      pageLog({ year: roster ? roster.year : 'none' }).debug('Running order re-read after a server signal');
+      setRunningOrder(roster);
+      setRunningOrderStatus('ready');
+      setRunningOrderError('');
+    } catch (err) {
+      pageLog({ reason: err && err.message }).warn('Running order re-read failed, keeping the last one');
+    }
+  }, []);
+
+  // Pushed, not polled: the server says when an ingest has changed the stored
+  // files (see autofillEvents.js), and the page re-reads them then. The
+  // visibilitychange re-check above remains as the backstop for a stream that
+  // was cut while the tab was asleep.
+  const onServerSignal = useCallback(
+    (info) => {
+      pageLog({ reason: info && info.reason, sequence: info && info.sequence }).debug('Server signal received - refreshing quietly');
+      refreshFiles({ quiet: true });
+      refreshRunningOrderQuietly();
+    },
+    [refreshFiles, refreshRunningOrderQuietly],
+  );
+
+  useEffect(() => {
+    pageLog().debug('Subscribing to the server file-change signal');
+    const unsubscribe = subscribeToFileChanges({
+      onChange: onServerSignal,
+      onState: (streamState) => pageLog({ streamState }).debug('File-change signal stream state'),
+    });
+    return () => {
+      pageLog().debug('Unsubscribing from the server file-change signal');
+      unsubscribe();
+    };
+  }, [onServerSignal]);
 
   const refreshStore = useCallback(async () => {
     pageLog().debug('Refreshing the store: file listing and running order');

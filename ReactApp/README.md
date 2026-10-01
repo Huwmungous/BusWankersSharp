@@ -343,6 +343,7 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 | `GET  /files`                | none     | dropdown - which files exist, size, last modified, content hash |
 | `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
 | `GET  /running-order`        | none     | running order list + festival year (404 until ingested) |
+| `GET  /events`               | sign-in  | Server-Sent Events: a `files-changed` frame after every ingest, so open pages refresh the listing without polling (`src/autofillEvents.js`). A `: keepalive` comment every 20s keeps nginx from timing the idle stream out |
 | `POST /sheets`, `POST /generate` | password | (no longer used by the page - kept for scripting) |
 
 Two ways a user gets a file, both served by `GET /files/{filename}`:
