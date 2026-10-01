@@ -138,6 +138,28 @@ internal static partial class ControllerLog
         Message = "Clearing the running order for an emptied roster sheet failed: Upload={Upload}")]
     public static partial void RosterClearFailed(ILogger logger, Exception exception, string upload);
 
+    // ---- the files-changed signal (GET /events, and the ingest that feeds it) -
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Published a files-changed signal: Sequence={Sequence} Reason={Reason} Listeners={Listeners}")]
+    public static partial void ChangePublished(ILogger logger, long sequence, string reason, int listeners);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Events stream opened: Caller={Caller} Listeners={Listeners} Sequence={Sequence}")]
+    public static partial void EventsOpened(ILogger logger, string caller, int listeners, long sequence);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Events stream delivered a change: Caller={Caller} Sequence={Sequence}")]
+    public static partial void EventDelivered(ILogger logger, string caller, long sequence);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Events stream closed: Caller={Caller} How={How} ElapsedMs={ElapsedMs} Delivered={Delivered} Listeners={Listeners}")]
+    public static partial void EventsClosed(ILogger logger, string caller, string how, long elapsedMs, int delivered, int listeners);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Events stream failed unexpectedly: Caller={Caller}")]
+    public static partial void EventsFailed(ILogger logger, Exception exception, string caller);
+
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Roster sheet rejected by the reader: Upload={Upload} Reason={Reason}")]
     public static partial void RosterRejected(ILogger logger, string upload, string reason);

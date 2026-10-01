@@ -89,6 +89,8 @@ var app = await ServiceFactory.CreateAsync(new ServiceFactoryOptions
         // so 401s/403s answered by the auth middlewares are recorded too - see
         // RequestLoggingMiddleware.cs for why a ConfigurePipeline hook is too late.
         services.AddSingleton<IStartupFilter, RequestLoggingStartupFilter>();
+        // One shared instance: ingest requests publish on it, GET /events streams read from it.
+        services.AddSingleton<AutofillChangeNotifier>();
     }
 });
 
