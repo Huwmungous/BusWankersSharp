@@ -1,18 +1,20 @@
 // Client for the Registrations tab's routes on the UploaderService
 // (api/autofill/registrations - see RegistrationAllocationController).
 //
+// A registration goes through two stages: HELD for a browser when the tab is
+// opened (or Next is pressed) so nobody else is shown it, then TAKEN for good
+// when that browser copies either value.
+//
 // Who is "a user"? Everyone signs in as the same Keycloak identity, so the
 // token can't tell people apart. Each browser invents a random id for itself,
-// keeps it in localStorage, and sends it as `claimant`: the server holds a
-// registration for the browser that copied it and offers it to nobody else.
-// It tells browsers apart, nothing more - clearing site data starts a fresh
-// "person" (what the old one copied stays allocated).
+// keeps it in localStorage, and sends it as `claimant`. It tells browsers
+// apart, nothing more - clearing site data starts a fresh "person" (what the
+// old one copied stays taken).
 //
-// The id travels in the query string (GET) or the JSON body (POST), never a
-// header, and the JSON body goes up as a typed Blob so the browser sets the
-// Content-Type itself - nothing here depends on how the sign-in fetch
-// interceptor treats headers. Registration numbers and postcodes are never
-// logged, only counts and outcomes.
+// The id travels in the JSON body, never a header, and the body goes up as a
+// typed Blob so the browser sets the Content-Type itself - nothing here
+// depends on how the sign-in fetch interceptor treats headers. Registration
+// numbers and postcodes are never logged, only counts and outcomes.
 import { API_BASE, loggedFetch, readErrorMessage, UPLOADERS_ONLY_MESSAGE } from './autofillApi';
 import { getLog, asError } from '../log';
 
@@ -66,8 +68,11 @@ export function resetClaimantIdForTests() {
 const jsonBody = (value) => new Blob([JSON.stringify(value)], { type: 'application/json' });
 
 // The shape the server answers with, made safe to read: a pool state is
-// { loaded, total, remaining, allAllocated, entry: { regNumber, postCode,
-// allocated, mine } | null }.
+// { loaded, total, remaining, allAllocated, heldByOthers, entry: { regNumber,
+// postCode, allocated, mine } | null }. An entry that is neither allocated
+// nor mine is being HELD for this browser; allocated + mine means it has been
+// copied and is this browser's for good. heldByOthers: nothing to show because
+// the registrations that remain are being held by other people just now.
 function normaliseState(body) {
   const entry = body && body.entry
     ? {
@@ -82,6 +87,7 @@ function normaliseState(body) {
     total: (body && body.total) || 0,
     remaining: (body && body.remaining) || 0,
     allAllocated: !!(body && body.allAllocated),
+    heldByOthers: !!(body && body.heldByOthers),
     entry,
   };
 }
@@ -95,16 +101,21 @@ async function readState(response, what) {
   return state;
 }
 
-// What to show when the tab opens: this browser's own latest registration if
-// it has claimed one (so a reload doesn't lose the postcode), else the first
-// free one. Allocates nothing.
-export async function fetchCurrentRegistration() {
-  const url = `${REGISTRATIONS_BASE}/current?claimant=${encodeURIComponent(claimantId())}`;
-  const response = await loggedFetch('registrations/current', url, { cache: 'no-store' });
+// The tab was opened: the server HOLDS the first available registration for
+// this browser (or keeps the one it is already holding) and returns it, so
+// nobody else is shown it meanwhile. The hold lapses if the person wanders
+// off; only copying (claimRegistration) takes it for good. Resolves to null
+// entry when none is available.
+export async function openRegistrations() {
+  const response = await loggedFetch('registrations/open', `${REGISTRATIONS_BASE}/open`, {
+    method: 'POST',
+    body: jsonBody({ claimant: claimantId() }),
+  });
   return readState(response, 'Loading the registration');
 }
 
-// The next FREE registration after the one on screen (wrapping round). Allocates nothing.
+// Next: the server lets go of the registration being held and holds the next
+// available one after it (wrapping round). Nothing is taken.
 export async function fetchNextRegistration(afterRegNumber) {
   const response = await loggedFetch('registrations/next', `${REGISTRATIONS_BASE}/next`, {
     method: 'POST',

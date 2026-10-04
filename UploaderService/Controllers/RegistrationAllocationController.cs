@@ -8,36 +8,43 @@ namespace Autofills.UploaderService.Controllers;
 
 /// <summary>
 /// The Registrations tab: hands out (registration number, postcode) pairs from
-/// the compiled spreadsheet, each to one person only.
+/// the compiled spreadsheet's "Unique Reg Numbers" sheet, each to one person only.
 ///
-///   GET  /current  - what a browser should show on opening the tab: the pair
-///                    it last claimed, else the first free one
-///   POST /next     - the next FREE pair after the one on screen (wrapping)
-///   POST /claim    - the Copy button: gives the pair to this browser if it is
-///                    still free; if somebody got there first it says so and
-///                    returns the next free pair instead
-///   POST /load     - (uploaders only) read the "Unique Reg Numbers" tab of the
-///                    compiled workbook into the pool, keeping every allocation
+/// A pair goes through two stages. HELD: opening the tab (or pressing Next)
+/// holds the first available pair for that browser, so nobody else is shown it
+/// meanwhile - the hold lapses after Registrations:HoldMinutes (default 15) if
+/// the person wanders off. TAKEN: pressing either Copy button takes the pair
+/// for good, and it is never offered to anyone else.
+///
+///   POST /open   - the tab was opened: hold (or keep holding) the first
+///                  available pair for this browser and return it
+///   POST /next   - release the held pair and hold the next available one
+///                  after it (wrapping)
+///   POST /claim  - the Copy button: take the pair for this browser if it is
+///                  still its to take; if somebody else has it, say so and
+///                  hold the next available pair instead
+///   POST /load   - (uploaders only) read the "Unique Reg Numbers" sheet of the
+///                  compiled workbook into the pool, keeping every taking
 ///
 /// Who is "a user"? Every BusWankers person signs in as the same single
 /// Keycloak identity (see UploadServiceController), so the token can't tell
 /// them apart. Each browser therefore makes up a random id for itself and
-/// sends it as <c>claimant</c> - in the query string or JSON body rather than a
-/// header, so nothing depends on how the auth fetch interceptor treats headers.
-/// It is a way of telling browsers apart, not a security boundary: clearing
-/// site data starts a new "person" (and what the old one copied stays
-/// allocated).
+/// sends it as <c>claimant</c> in the JSON body, not a header, so nothing
+/// depends on how the auth fetch interceptor treats headers. It is a way of
+/// telling browsers apart, not a security boundary: clearing site data starts
+/// a new "person" (and what the old one copied stays taken).
 ///
 /// Everything needs a signed-in user, like the rest of the service; only /load
-/// needs the "uploaders" group. Nothing is ever allocated by looking: only
-/// /claim changes who holds a pair. All changes go through
-/// RegistrationPoolStore's lock.
+/// needs the "uploaders" group. All changes go through RegistrationPoolStore's
+/// lock, which is what makes two people pressing Copy at once safe.
 /// </summary>
 [ApiController]
 [Route("api/autofill/registrations")]
 [Authorize]
 public class RegistrationAllocationController : ControllerBase
 {
+    private const string HoldMinutesKey = "Registrations:HoldMinutes";
+
     private static readonly Regex ClaimantShape = new("^[A-Za-z0-9-]{8,64}$", RegexOptions.Compiled);
 
     private readonly ILogger<RegistrationAllocationController> _log;
@@ -46,26 +53,31 @@ public class RegistrationAllocationController : ControllerBase
     public RegistrationAllocationController(IConfiguration config, ILogger<RegistrationAllocationController> log)
     {
         _log = log;
-        _pool = new RegistrationPoolStore(new AutofillStore(config, log), log);
+
+        var minutes = config.GetValue<int?>(HoldMinutesKey);
+        var holdFor = minutes is > 0 ? TimeSpan.FromMinutes(minutes.Value) : RegistrationPool.DefaultHoldFor;
+        _pool = new RegistrationPoolStore(new AutofillStore(config, log), log, holdFor);
     }
 
-    [HttpGet("current")]
-    public async Task<IActionResult> Current([FromQuery] string? claimant, CancellationToken ct)
+    public sealed record OpenRequest(string? Claimant);
+
+    [HttpPost("open")]
+    public async Task<IActionResult> Open([FromBody] OpenRequest? body, CancellationToken ct)
     {
-        if (!TryClaimant(claimant, "current", out var who, out var refusal))
+        if (!TryClaimant(body?.Claimant, "open", out var who, out var refusal))
             return refusal!;
 
         try
         {
             var state = await _pool.UseAsync(pool =>
-                (ViewOf(pool, pool.Current(who), who), false), ct);
+                (ViewOf(pool, pool.Open(who, DateTimeOffset.UtcNow), who), true), ct);
 
-            PoolLog.Shown(_log, Short(who), "current", state.Total, state.Remaining, state.Entry != null);
+            PoolLog.Shown(_log, Short(who), "open", state.Total, state.Remaining, state.Entry != null);
             return Ok(state);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Failure(ex, "current");
+            return Failure(ex, "open");
         }
     }
 
@@ -80,7 +92,7 @@ public class RegistrationAllocationController : ControllerBase
         try
         {
             var state = await _pool.UseAsync(pool =>
-                (ViewOf(pool, pool.Next(body!.After, who), who), false), ct);
+                (ViewOf(pool, pool.Next(body!.After, who, DateTimeOffset.UtcNow), who), true), ct);
 
             PoolLog.Shown(_log, Short(who), "next", state.Total, state.Remaining, state.Entry != null);
             return Ok(state);
@@ -110,7 +122,8 @@ public class RegistrationAllocationController : ControllerBase
         {
             var result = await _pool.UseAsync(pool =>
             {
-                var (outcome, entry) = pool.Claim(regNumber, who, DateTimeOffset.UtcNow);
+                var now = DateTimeOffset.UtcNow;
+                var (outcome, entry) = pool.Claim(regNumber, who, now);
 
                 return outcome switch
                 {
@@ -118,12 +131,13 @@ public class RegistrationAllocationController : ControllerBase
                         (new ClaimResult(true, null, ViewOf(pool, entry, who)), true),
                     ClaimOutcome.AlreadyYours =>
                         (new ClaimResult(true, null, ViewOf(pool, entry, who)), false),
-                    // Somebody else got there first (or a reload removed it): say so,
-                    // and move this browser on to the next free pair.
+                    // Somebody else has it (or a reload removed it): say so, and hold
+                    // the next available pair for this browser instead - which is a
+                    // change to the pool, so it is saved.
                     ClaimOutcome.TakenByOther =>
-                        (new ClaimResult(false, "taken", ViewOf(pool, pool.Next(regNumber, who), who)), false),
+                        (new ClaimResult(false, "taken", ViewOf(pool, pool.Next(regNumber, who, now), who)), true),
                     _ =>
-                        (new ClaimResult(false, "missing", ViewOf(pool, pool.Next(regNumber, who), who)), false),
+                        (new ClaimResult(false, "missing", ViewOf(pool, pool.Next(regNumber, who, now), who)), true),
                 };
             }, ct);
 
@@ -139,6 +153,7 @@ public class RegistrationAllocationController : ControllerBase
             return Failure(ex, "claim");
         }
     }
+
 
     /// <summary>
     /// Read the compiled workbook's "Unique Reg Numbers" tab into the pool.
@@ -203,16 +218,21 @@ public class RegistrationAllocationController : ControllerBase
 
     // ---- shapes the page reads --------------------------------------------------
 
-    /// <summary>One pair as the page sees it. Mine = held by the asking browser.</summary>
+    /// <summary>
+    /// One pair as the page sees it. Allocated = it has been taken (copied);
+    /// Mine = it was taken by the asking browser. A pair that is neither is
+    /// being HELD for the asking browser and becomes permanent when it copies.
+    /// </summary>
     public sealed record EntryView(string RegNumber, string PostCode, bool Allocated, bool Mine);
 
     /// <summary>
     /// Loaded is false until a workbook has been loaded. AllAllocated is true
-    /// only when there IS a pool and none of it is left - the page shows
-    /// "All Registrations have been allocated" for that. Entry is null when
-    /// there is nothing to show.
+    /// only when there IS a pool and every pair in it has been taken - the page
+    /// shows "All Registrations have been allocated" for that. Entry is null
+    /// when there is nothing to show; HeldByOthers then says why - pairs remain
+    /// but other people are holding them just now.
     /// </summary>
-    public sealed record PoolState(bool Loaded, int Total, int Remaining, bool AllAllocated, EntryView? Entry);
+    public sealed record PoolState(bool Loaded, int Total, int Remaining, bool AllAllocated, bool HeldByOthers, EntryView? Entry);
 
     /// <summary>
     /// Reply to a claim. Claimed false means the pair was not given to this
@@ -227,6 +247,7 @@ public class RegistrationAllocationController : ControllerBase
             pool.Total,
             pool.Remaining,
             pool.AllAllocated,
+            entry == null && pool.Remaining > 0,
             entry == null ? null : new EntryView(entry.RegNumber, entry.PostCode, entry.IsAllocated, entry.AllocatedTo == claimant));
 
     // ---- helpers ------------------------------------------------------------------

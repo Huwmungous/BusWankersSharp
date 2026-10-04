@@ -224,7 +224,7 @@ const BusWankersPage = () => {
         />
       </div>
       <div {...tabProps('registrations')}>
-        <RegistrationsSection reloadKey={registrationsVersion} />
+        <RegistrationsSection active={activeTab === 'registrations'} reloadKey={registrationsVersion} />
       </div>
       <div {...tabProps('running-order')}>
         <RunningOrderSection

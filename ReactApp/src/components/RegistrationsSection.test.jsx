@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 // The server calls, the clipboard and the logger are mocked: what is under test
 // is what the tab does with the server's answers.
 const api = vi.hoisted(() => ({
-  fetchCurrentRegistration: vi.fn(),
+  openRegistrations: vi.fn(),
   fetchNextRegistration: vi.fn(),
   claimRegistration: vi.fn(),
 }));
@@ -17,10 +17,10 @@ vi.mock('../log', () => {
   return { getLog: () => log, asError: (e) => e };
 });
 
-import RegistrationsSection, { ALL_ALLOCATED_MESSAGE, NOT_LOADED_MESSAGE } from './RegistrationsSection';
+import RegistrationsSection, { ALL_ALLOCATED_MESSAGE, HELD_BY_OTHERS_MESSAGE, NOT_LOADED_MESSAGE } from './RegistrationsSection';
 
 const entry = (regNumber, postCode, mine = false) => ({ regNumber, postCode, allocated: mine, mine });
-const state = (overrides = {}) => ({ loaded: true, total: 3, remaining: 3, allAllocated: false, entry: entry('1111111', 'AB1 2CD'), ...overrides });
+const state = (overrides = {}) => ({ loaded: true, total: 3, remaining: 3, allAllocated: false, heldByOthers: false, entry: entry('1111111', 'AB1 2CD'), ...overrides });
 
 // A stand-in for copyWhenReady that behaves like the real one: waits for the
 // promised text and reports a successful copy of it (or nothing, for null).
@@ -36,17 +36,17 @@ beforeEach(() => {
 });
 
 test('shows the current registration and how many are left', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+  api.openRegistrations.mockResolvedValue(state());
   render(<RegistrationsSection />);
 
   expect(await screen.findByText('1111111')).toBeTruthy();
   expect(screen.getByText('AB1 2CD')).toBeTruthy();
   expect(screen.getByText('3 of 3 still available')).toBeTruthy();
-  expect(api.claimRegistration).not.toHaveBeenCalled(); // looking allocates nothing
+  expect(api.claimRegistration).not.toHaveBeenCalled(); // opening holds, it does not take
 });
 
 test('has a Copy button for each of the registration number and the postcode', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+  api.openRegistrations.mockResolvedValue(state());
   render(<RegistrationsSection />);
   await screen.findByText('1111111');
 
@@ -55,7 +55,7 @@ test('has a Copy button for each of the registration number and the postcode', a
 });
 
 test('Copy reserves the pair first and then copies the value that was asked for', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+  api.openRegistrations.mockResolvedValue(state());
   api.claimRegistration.mockResolvedValue({
     claimed: true,
     reason: null,
@@ -74,8 +74,8 @@ test('Copy reserves the pair first and then copies the value that was asked for'
   expect(screen.getByRole('button', { name: 'Copy the postcode' }).textContent).toBe('Copied');
 });
 
-test('if someone else got there first nothing is copied and the next registration is shown', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+test('if the pair has gone elsewhere nothing is copied and the next registration is shown', async () => {
+  api.openRegistrations.mockResolvedValue(state());
   api.claimRegistration.mockResolvedValue({
     claimed: false,
     reason: 'taken',
@@ -94,7 +94,7 @@ test('if someone else got there first nothing is copied and the next registratio
 });
 
 test('says so when the claim is made but the browser refuses the clipboard', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+  api.openRegistrations.mockResolvedValue(state());
   api.claimRegistration.mockResolvedValue({
     claimed: true,
     reason: null,
@@ -110,8 +110,8 @@ test('says so when the claim is made but the browser refuses the clipboard', asy
   expect(screen.getByText('Reserved for you')).toBeTruthy();
 });
 
-test('Next asks for the entry after the one on screen and shows it, reserving nothing', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+test('Next asks for the entry after the one on screen and shows it, taking nothing', async () => {
+  api.openRegistrations.mockResolvedValue(state());
   api.fetchNextRegistration.mockResolvedValue(state({ entry: entry('2222222', 'EF3 4GH') }));
   render(<RegistrationsSection />);
   await screen.findByText('1111111');
@@ -124,7 +124,7 @@ test('Next asks for the entry after the one on screen and shows it, reserving no
 });
 
 test('when everything is allocated it says "All Registrations have been allocated" and Next is disabled', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state({ remaining: 0, allAllocated: true, entry: null }));
+  api.openRegistrations.mockResolvedValue(state({ remaining: 0, allAllocated: true, entry: null }));
   render(<RegistrationsSection />);
 
   expect(await screen.findByText(ALL_ALLOCATED_MESSAGE)).toBeTruthy();
@@ -134,7 +134,7 @@ test('when everything is allocated it says "All Registrations have been allocate
 });
 
 test('the message appears as soon as the last registration is copied', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state({ remaining: 1, total: 3 }));
+  api.openRegistrations.mockResolvedValue(state({ remaining: 1, total: 3 }));
   api.claimRegistration.mockResolvedValue({
     claimed: true,
     reason: null,
@@ -152,7 +152,7 @@ test('the message appears as soon as the last registration is copied', async () 
 });
 
 test('says so when no registrations have been loaded yet', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue({ loaded: false, total: 0, remaining: 0, allAllocated: false, entry: null });
+  api.openRegistrations.mockResolvedValue({ loaded: false, total: 0, remaining: 0, allAllocated: false, entry: null });
   render(<RegistrationsSection />);
 
   expect(await screen.findByText(NOT_LOADED_MESSAGE)).toBeTruthy();
@@ -160,8 +160,8 @@ test('says so when no registrations have been loaded yet', async () => {
 });
 
 test('offers a retry when the registrations cannot be loaded', async () => {
-  api.fetchCurrentRegistration.mockRejectedValueOnce(new Error('Your sign-in has expired - reload the page to sign in again.'));
-  api.fetchCurrentRegistration.mockResolvedValueOnce(state());
+  api.openRegistrations.mockRejectedValueOnce(new Error('Your sign-in has expired - reload the page to sign in again.'));
+  api.openRegistrations.mockResolvedValueOnce(state());
   render(<RegistrationsSection />);
 
   expect(await screen.findByText(/sign-in has expired/)).toBeTruthy();
@@ -171,12 +171,52 @@ test('offers a retry when the registrations cannot be loaded', async () => {
 });
 
 test('re-reads the pool when a new spreadsheet has been loaded (reloadKey changes)', async () => {
-  api.fetchCurrentRegistration.mockResolvedValue(state());
+  api.openRegistrations.mockResolvedValue(state());
   const { rerender } = render(<RegistrationsSection reloadKey={0} />);
   await screen.findByText('1111111');
-  expect(api.fetchCurrentRegistration).toHaveBeenCalledTimes(1);
+  expect(api.openRegistrations).toHaveBeenCalledTimes(1);
 
   rerender(<RegistrationsSection reloadKey={1} />);
 
-  await waitFor(() => expect(api.fetchCurrentRegistration).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(api.openRegistrations).toHaveBeenCalledTimes(2));
+});
+
+test('shows a held (not yet taken) pair as held, and a taken one as reserved', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  render(<RegistrationsSection />);
+
+  expect(await screen.findByText(/Held for you/)).toBeTruthy();
+  expect(screen.queryByText('Reserved for you')).toBeNull();
+});
+
+test('does not open anything on the server until the tab is active', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  const { rerender } = render(<RegistrationsSection active={false} />);
+  await Promise.resolve();
+  expect(api.openRegistrations).not.toHaveBeenCalled();
+
+  rerender(<RegistrationsSection active />);
+
+  expect(await screen.findByText('1111111')).toBeTruthy();
+  expect(api.openRegistrations).toHaveBeenCalledTimes(1);
+});
+
+test('opens again each time the tab is returned to', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  const { rerender } = render(<RegistrationsSection active />);
+  await screen.findByText('1111111');
+
+  rerender(<RegistrationsSection active={false} />);
+  rerender(<RegistrationsSection active />);
+
+  await waitFor(() => expect(api.openRegistrations).toHaveBeenCalledTimes(2));
+  expect(screen.getByText('1111111')).toBeTruthy(); // no flash of "Loading…"
+});
+
+test('says the rest are being held by others when none is free but some remain', async () => {
+  api.openRegistrations.mockResolvedValue(state({ remaining: 2, heldByOthers: true, entry: null }));
+  render(<RegistrationsSection />);
+
+  expect(await screen.findByText(HELD_BY_OTHERS_MESSAGE)).toBeTruthy();
+  expect(screen.queryByText(ALL_ALLOCATED_MESSAGE)).toBeNull();
 });

@@ -35,11 +35,14 @@ public sealed class RegistrationPoolStore
 
     private readonly AutofillStore _store;
     private readonly ILogger _log;
+    private readonly TimeSpan _holdFor;
 
-    public RegistrationPoolStore(AutofillStore store, ILogger log)
+    /// <param name="holdFor">How long a pair shown to someone stays held for them (see RegistrationPool.HoldFor).</param>
+    public RegistrationPoolStore(AutofillStore store, ILogger log, TimeSpan holdFor)
     {
         _store = store;
         _log = log;
+        _holdFor = holdFor;
     }
 
     /// <summary>
@@ -71,13 +74,13 @@ public sealed class RegistrationPoolStore
         if (path == null)
         {
             PoolLog.NoPoolFile(_log, _store.Directory);
-            return new RegistrationPool();
+            return new RegistrationPool(holdFor: _holdFor);
         }
 
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var document = await JsonSerializer.DeserializeAsync<PoolDocument>(stream, JsonOptions, ct);
 
-        var pool = new RegistrationPool(document?.Entries, document?.Source ?? string.Empty, document?.LoadedAt);
+        var pool = new RegistrationPool(document?.Entries, document?.Source ?? string.Empty, document?.LoadedAt, _holdFor);
         PoolLog.PoolRead(_log, pool.Total, pool.Remaining);
         return pool;
     }

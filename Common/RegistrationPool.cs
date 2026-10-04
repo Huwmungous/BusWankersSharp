@@ -140,23 +140,36 @@ namespace Autofills.Common
     }
 
     /// <summary>
-    /// One pair in the pool and who (if anyone) holds it. <c>AllocatedTo</c> is
-    /// the opaque id a browser generated for itself (see the allocation
-    /// controller) - null while the pair is still free.
+    /// One pair in the pool and where it stands. A pair is in one of three
+    /// states:
+    ///   - free: nobody has it;
+    ///   - held: <c>HeldBy</c> was shown it when they opened the tab (or pressed
+    ///     Next), and nobody else is offered it until the hold lapses (see
+    ///     RegistrationPool.HoldFor) or they move on;
+    ///   - taken: <c>AllocatedTo</c> copied it, and it is theirs for good.
+    /// Both ids are the opaque ones browsers generate for themselves (see the
+    /// allocation controller).
     /// </summary>
-    public record PoolEntry(string RegNumber, string PostCode, string? AllocatedTo = null, DateTimeOffset? AllocatedAt = null)
+    public record PoolEntry(
+        string RegNumber,
+        string PostCode,
+        string? AllocatedTo = null,
+        DateTimeOffset? AllocatedAt = null,
+        string? HeldBy = null,
+        DateTimeOffset? HeldAt = null)
     {
+        /// <summary>True once someone has copied it - it can never be offered again.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public bool IsAllocated => AllocatedTo != null;
     }
 
     public enum ClaimOutcome
     {
-        /// <summary>It was free and now belongs to the claimant.</summary>
+        /// <summary>It was available and is now taken by the claimant.</summary>
         Claimed,
-        /// <summary>It already belonged to the claimant (copying the second field, say) - nothing changed.</summary>
+        /// <summary>It was already taken by the claimant (copying the second field, say) - nothing changed.</summary>
         AlreadyYours,
-        /// <summary>It belongs to somebody else.</summary>
+        /// <summary>It is taken by somebody else, or (after the claimant's own hold lapsed) held by somebody else.</summary>
         TakenByOther,
         /// <summary>It isn't in the pool (the pool was reloaded without it).</summary>
         NotFound,
@@ -166,24 +179,36 @@ namespace Autofills.Common
     public record PoolReplaceResult(int Total, int Added, int StillAllocated, int DroppedAllocated);
 
     /// <summary>
-    /// The allocation rules, with no I/O: an ordered list of pairs, each either
-    /// free or held by one claimant, and the three things anyone can do - look
-    /// at the next free one, claim one, or have the whole list reloaded.
+    /// The allocation rules, with no I/O: an ordered list of pairs, each free,
+    /// held for one claimant or taken by one, and the things anyone can do -
+    /// open the tab (which holds the first available pair for them), press
+    /// Next (release the held pair and hold the next one), copy (take the pair
+    /// for good), or have the whole list reloaded.
+    ///
+    /// Why a hold as well as a taking: opening the tab must keep two people
+    /// from being shown, and so racing for, the same pair - but someone who
+    /// opens the tab and wanders off must not block a pair indefinitely, so a
+    /// hold lapses after <see cref="HoldFor"/>. Only copying is permanent.
     ///
     /// NOT thread-safe by design: the caller (UploaderService's
     /// RegistrationPoolStore) loads, changes and saves it under one lock, which
     /// is what makes "once copied, it can't go to anyone else" hold when two
-    /// people press Copy at the same moment.
+    /// people act at the same moment. Every method that can change state takes
+    /// the current time as a parameter, so the tests need no clock.
     /// </summary>
     public sealed class RegistrationPool
     {
+        /// <summary>How long a hold lasts if nobody renews it by opening the tab again or pressing Next.</summary>
+        public static readonly TimeSpan DefaultHoldFor = TimeSpan.FromMinutes(15);
+
         private List<PoolEntry> _entries;
 
-        public RegistrationPool(IEnumerable<PoolEntry>? entries = null, string source = "", DateTimeOffset? loadedAt = null)
+        public RegistrationPool(IEnumerable<PoolEntry>? entries = null, string source = "", DateTimeOffset? loadedAt = null, TimeSpan? holdFor = null)
         {
             _entries = entries?.ToList() ?? new List<PoolEntry>();
             Source = source;
             LoadedAt = loadedAt;
+            HoldFor = holdFor ?? DefaultHoldFor;
         }
 
         /// <summary>The file the pairs were last loaded from (for the log and the uploader's confirmation).</summary>
@@ -191,39 +216,69 @@ namespace Autofills.Common
 
         public DateTimeOffset? LoadedAt { get; private set; }
 
+        public TimeSpan HoldFor { get; }
+
         public IReadOnlyList<PoolEntry> Entries => _entries;
 
         public int Total => _entries.Count;
 
+        /// <summary>How many have not been taken - held ones still count, they can lapse.</summary>
         public int Remaining => _entries.Count(e => !e.IsAllocated);
 
         public bool AllAllocated => _entries.Count > 0 && Remaining == 0;
 
-        /// <summary>
-        /// What a browser should show when it opens the tab: the pair that
-        /// browser most recently claimed (so a reload after copying the
-        /// registration number doesn't lose the postcode), otherwise the first
-        /// free pair. Null when there is nothing free and nothing of its own.
-        /// </summary>
-        public PoolEntry? Current(string claimant)
-        {
-            var mine = _entries
-                .Where(e => e.AllocatedTo == claimant && e.AllocatedAt != null)
-                .OrderByDescending(e => e.AllocatedAt)
-                .FirstOrDefault();
+        private bool IsLiveHold(PoolEntry e, DateTimeOffset now) =>
+            e.HeldBy != null && e.HeldAt != null && e.HeldAt.Value + HoldFor > now;
 
-            return mine ?? Next(null, claimant);
+        private bool HeldByAnother(PoolEntry e, string claimant, DateTimeOffset now) =>
+            IsLiveHold(e, now) && e.HeldBy != claimant;
+
+        /// <summary>Not taken, and not held for somebody else right now.</summary>
+        private bool AvailableTo(PoolEntry e, string claimant, DateTimeOffset now) =>
+            !e.IsAllocated && !HeldByAnother(e, claimant, now);
+
+        /// <summary>
+        /// Holds entry <paramref name="index"/> for the claimant, letting go of
+        /// any other (untaken) pair they were holding - a person holds one at a time.
+        /// </summary>
+        private PoolEntry HoldEntry(int index, string claimant, DateTimeOffset now)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (i != index && !_entries[i].IsAllocated && _entries[i].HeldBy == claimant)
+                    _entries[i] = _entries[i] with { HeldBy = null, HeldAt = null };
+            }
+
+            var held = _entries[index] with { HeldBy = claimant, HeldAt = now };
+            _entries[index] = held;
+            return held;
         }
 
         /// <summary>
-        /// The first FREE pair after <paramref name="afterRegNumber"/> in list
-        /// order, wrapping round to the top, so a pair someone skipped with Next
-        /// comes round again rather than being lost to them. With no
-        /// <paramref name="afterRegNumber"/> (or one that isn't in the list)
-        /// it's simply the first free pair. Null when none is free. Never
-        /// changes anything.
+        /// What a browser is shown when it opens the tab, and the pair is HELD
+        /// for it: the pair it is already holding (renewed), otherwise the first
+        /// available one. Null when nothing is available - everything is taken,
+        /// or what is left is held by other people just now.
         /// </summary>
-        public PoolEntry? Next(string? afterRegNumber, string claimant)
+        public PoolEntry? Open(string claimant, DateTimeOffset now)
+        {
+            var own = _entries.FindIndex(e => !e.IsAllocated && e.HeldBy == claimant && IsLiveHold(e, now));
+            if (own >= 0)
+                return HoldEntry(own, claimant, now);
+
+            var first = _entries.FindIndex(e => AvailableTo(e, claimant, now));
+            return first < 0 ? null : HoldEntry(first, claimant, now);
+        }
+
+        /// <summary>
+        /// The first available pair after <paramref name="afterRegNumber"/> in list
+        /// order, wrapping round to the top, held for the claimant in place of
+        /// the one they were holding (which goes back to the pool, so a pair
+        /// someone skips comes round again). With no <paramref name="afterRegNumber"/>
+        /// (or one that isn't in the list) it starts from the top. Null, and
+        /// nothing changed, when nothing is available.
+        /// </summary>
+        public PoolEntry? Next(string? afterRegNumber, string claimant, DateTimeOffset now)
         {
             if (_entries.Count == 0)
                 return null;
@@ -238,18 +293,20 @@ namespace Autofills.Common
 
             for (int i = 0; i < _entries.Count; i++)
             {
-                var candidate = _entries[(start + i) % _entries.Count];
-                if (!candidate.IsAllocated)
-                    return candidate;
+                var index = (start + i) % _entries.Count;
+                if (AvailableTo(_entries[index], claimant, now))
+                    return HoldEntry(index, claimant, now);
             }
 
             return null;
         }
 
         /// <summary>
-        /// Gives the pair to the claimant if it's still free. Claiming one
-        /// you already hold is harmless (copying the postcode after the
-        /// registration number), and anyone else's is refused.
+        /// Takes the pair for the claimant for good - what pressing Copy does.
+        /// Taking one already theirs is harmless (copying the postcode after the
+        /// registration number); one taken by somebody else is refused, as is
+        /// one now held for somebody else (the claimant's own hold lapsed and
+        /// another person was shown it since).
         /// </summary>
         public (ClaimOutcome Outcome, PoolEntry? Entry) Claim(string regNumber, string claimant, DateTimeOffset now)
         {
@@ -258,22 +315,25 @@ namespace Autofills.Common
                 return (ClaimOutcome.NotFound, null);
 
             var entry = _entries[at];
-            if (entry.AllocatedTo == null)
+            if (entry.IsAllocated)
             {
-                var claimed = entry with { AllocatedTo = claimant, AllocatedAt = now };
-                _entries[at] = claimed;
-                return (ClaimOutcome.Claimed, claimed);
+                return entry.AllocatedTo == claimant
+                    ? (ClaimOutcome.AlreadyYours, entry)
+                    : (ClaimOutcome.TakenByOther, entry);
             }
 
-            return entry.AllocatedTo == claimant
-                ? (ClaimOutcome.AlreadyYours, entry)
-                : (ClaimOutcome.TakenByOther, entry);
+            if (HeldByAnother(entry, claimant, now))
+                return (ClaimOutcome.TakenByOther, entry);
+
+            var taken = entry with { AllocatedTo = claimant, AllocatedAt = now, HeldBy = null, HeldAt = null };
+            _entries[at] = taken;
+            return (ClaimOutcome.Claimed, taken);
         }
 
         /// <summary>
         /// Replaces the list with a freshly read one (a new upload), keeping
-        /// every allocation for a reg number that is still in it - reloading
-        /// must never hand out something already given away. An allocated
+        /// every taking and every hold for a reg number that is still in it -
+        /// reloading must never hand out something already given away. A taken
         /// reg number that is no longer in the sheet goes with it (counted in
         /// the result so the uploader can see it).
         /// </summary>
