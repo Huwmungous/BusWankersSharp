@@ -50,6 +50,6 @@ internal static partial class PoolLog
     public static partial void LoadRequested(ILogger logger, string caller, string? upload, long? bytes);
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "Registration pool loaded: Upload={Upload} Sheet={Sheet} Total={Total} Added={Added} StillAllocated={StillAllocated} DroppedAllocated={DroppedAllocated} SkippedRows={SkippedRows} DuplicateRows={DuplicateRows}")]
-    public static partial void Loaded(ILogger logger, string? upload, string sheet, int total, int added, int stillAllocated, int droppedAllocated, int skippedRows, int duplicateRows);
+        Message = "Registration pool loaded: Upload={Upload} Sheet={Sheet} Total={Total} Added={Added} StillAllocated={StillAllocated} DroppedAllocated={DroppedAllocated} SkippedRows={SkippedRows} DuplicateRows={DuplicateRows} InGroupsRows={InGroupsRows}")]
+    public static partial void Loaded(ILogger logger, string? upload, string sheet, int total, int added, int stillAllocated, int droppedAllocated, int skippedRows, int duplicateRows, int inGroupsRows);
 }

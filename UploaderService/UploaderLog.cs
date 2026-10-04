@@ -235,6 +235,10 @@ internal static partial class StoreLog
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Content hash could not be worked out - the page will compare modified times instead: File={File}")]
     public static partial void HashFailed(ILogger logger, Exception exception, string file);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "A stored groups file could not be read, so its members were not checked against the registration pool: File={File}")]
+    public static partial void GroupsUnreadable(ILogger logger, Exception exception, string file);
 }
 
 /// <summary>Log messages for the service's start-up and process-level faults.</summary>

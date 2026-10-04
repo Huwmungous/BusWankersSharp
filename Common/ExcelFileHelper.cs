@@ -322,7 +322,18 @@ namespace Autofills.Common
         {
             using var reader = OpenReader(excelStream, fileName);
             var ds = ReadDataSet(reader);
-            return RegistrationPoolReader.Read(ds);
+            var loaded = RegistrationPoolReader.Read(ds);
+
+            // Anyone in a group on one of the workbook's own sale sheets is booked
+            // through that group, so they are left out of the pool.
+            var inGroups = new HashSet<string>(StringComparer.Ordinal);
+            foreach (DataTable table in ds.Tables)
+            {
+                if (IsSaleSheet(table))
+                    inGroups.UnionWith(SheetRegistrationReader.ReadRegNumbers(table));
+            }
+
+            return RegistrationPoolReader.ExcludeGroupMembers(loaded, inGroups);
         }
 
         private static IExcelDataReader OpenReader(Stream excelStream, string fileName)

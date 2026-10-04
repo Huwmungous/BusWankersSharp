@@ -253,6 +253,52 @@ public sealed class AutofillStore
         return WriteAtomicAsync(GroupsFileNameFor(autofillFileName), json, ct);
     }
 
+    /// <summary>
+    /// Every registration number in any stored sale's groups sidecar - the people
+    /// already in a group from earlier ingests, which the Registrations pool must
+    /// leave out. A sidecar that can't be read is skipped (and logged), not fatal:
+    /// the workbook being loaded is checked on its own as well.
+    /// </summary>
+    public async Task<HashSet<string>> ReadStoredGroupRegNumbersAsync(CancellationToken ct = default)
+    {
+        var regs = new HashSet<string>(StringComparer.Ordinal);
+        if (!System.IO.Directory.Exists(_directory))
+            return regs;
+
+        foreach (var path in System.IO.Directory.EnumerateFiles(_directory, "*" + GroupsFileSuffix, SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
+                if (!doc.RootElement.TryGetProperty("groups", out var groups) || groups.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    continue;
+
+                foreach (var group in groups.EnumerateArray())
+                {
+                    if (!group.TryGetProperty("members", out var members) || members.ValueKind != System.Text.Json.JsonValueKind.Array)
+                        continue;
+
+                    foreach (var member in members.EnumerateArray())
+                    {
+                        if (member.TryGetProperty("registrationId", out var id) && id.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var reg = id.GetString()?.Trim();
+                            if (!string.IsNullOrEmpty(reg))
+                                regs.Add(reg);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                StoreLog.GroupsUnreadable(_log, ex, Path.GetFileName(path));
+            }
+        }
+
+        return regs;
+    }
+
     /// <summary>Removes a sale's groups sidecar (an emptied sale sheet clears it, same as its CSV). True if there was one.</summary>
     public bool DeleteGroups(string autofillFileName)
     {

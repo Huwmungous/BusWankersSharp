@@ -475,3 +475,87 @@ public class RegistrationPoolTests
         Assert.DoesNotContain("isAllocated", json);
     }
 }
+
+// People already in a group on a sale sheet are booked through that group, so
+// they are left out of the Registrations pool (2026-10-04).
+public class RegistrationPoolGroupExclusionTests
+{
+    private static PoolLoadResult Loaded(params string[] regs) =>
+        new("Unique Reg Numbers", regs.Select(r => new PoolRegistration(r, "S1 1AA")).ToList(), 0, 0);
+
+    private static DataTable SaleSheet(params string[][] rows)
+    {
+        var table = new DataTable("TestSale");
+        for (var c = 0; c < 3; c++) table.Columns.Add();
+        foreach (var r in new[] { new[] { "Group", "Reg Number", "Postcode" } }.Concat(rows))
+        {
+            var row = table.NewRow();
+            for (var c = 0; c < r.Length; c++) row[c] = r[c];
+            table.Rows.Add(row);
+        }
+        return table;
+    }
+
+    [Fact]
+    public void SaleSheetRegNumbersAreEveryoneBelowTheHeader()
+    {
+        var sheet = SaleSheet(
+            new[] { "A", "11111111", "S1 1AA" },
+            new[] { "A", "22222222", "S1 1AB" },
+            new[] { "", "", "" },
+            new[] { "B", "33333333", "S1 1AC" });
+
+        var regs = SheetRegistrationReader.ReadRegNumbers(sheet);
+
+        Assert.Equal(new[] { "11111111", "22222222", "33333333" }, regs.OrderBy(r => r));
+    }
+
+    [Fact]
+    public void SheetWithNoHeaderGivesNobody()
+    {
+        var table = new DataTable("Notes");
+        table.Columns.Add();
+        table.Rows.Add(table.NewRow());
+
+        Assert.Empty(SheetRegistrationReader.ReadRegNumbers(table));
+    }
+
+    [Fact]
+    public void GroupMembersAreRemovedAndCounted()
+    {
+        var result = RegistrationPoolReader.ExcludeGroupMembers(
+            Loaded("11111111", "22222222", "33333333"),
+            new HashSet<string> { "22222222", "99999999" });
+
+        Assert.Equal(new[] { "11111111", "33333333" }, result.Entries.Select(e => e.RegNumber));
+        Assert.Equal(1, result.InGroupsRows);
+    }
+
+    [Fact]
+    public void ExclusionsAccumulateAcrossCalls()
+    {
+        var once = RegistrationPoolReader.ExcludeGroupMembers(Loaded("1", "2", "3", "4"), new HashSet<string> { "1" });
+        var twice = RegistrationPoolReader.ExcludeGroupMembers(once, new HashSet<string> { "2" });
+
+        Assert.Equal(new[] { "3", "4" }, twice.Entries.Select(e => e.RegNumber));
+        Assert.Equal(2, twice.InGroupsRows);
+    }
+
+    [Fact]
+    public void NothingInAGroupLeavesThePoolAlone()
+    {
+        var loaded = Loaded("11111111", "22222222");
+
+        Assert.Same(loaded, RegistrationPoolReader.ExcludeGroupMembers(loaded, new HashSet<string>()));
+        Assert.Same(loaded, RegistrationPoolReader.ExcludeGroupMembers(loaded, new HashSet<string> { "99999999" }));
+    }
+
+    [Fact]
+    public void ThrowsAFriendlyErrorWhenEveryoneIsInAGroup()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            RegistrationPoolReader.ExcludeGroupMembers(Loaded("11111111"), new HashSet<string> { "11111111" }));
+
+        Assert.Contains("already in a group", ex.Message);
+    }
+}

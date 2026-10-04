@@ -48,11 +48,13 @@ public class RegistrationAllocationController : ControllerBase
     private static readonly Regex ClaimantShape = new("^[A-Za-z0-9-]{8,64}$", RegexOptions.Compiled);
 
     private readonly ILogger<RegistrationAllocationController> _log;
+    private readonly IConfiguration _config;
     private readonly RegistrationPoolStore _pool;
 
     public RegistrationAllocationController(IConfiguration config, ILogger<RegistrationAllocationController> log)
     {
         _log = log;
+        _config = config;
 
         var minutes = config.GetValue<int?>(HoldMinutesKey);
         var holdFor = minutes is > 0 ? TimeSpan.FromMinutes(minutes.Value) : RegistrationPool.DefaultHoldFor;
@@ -159,7 +161,8 @@ public class RegistrationAllocationController : ControllerBase
     /// Read the compiled workbook's "Unique Reg Numbers" tab into the pool.
     /// Reloading is safe: every pair that has already been allocated stays
     /// allocated, new reg numbers are added as free, and the order follows the
-    /// sheet.
+    /// sheet. Anyone who is in a group - on a sale sheet in this workbook, or in
+    /// the groups already stored from earlier uploads - is left out of the pool.
     /// </summary>
     [HttpPost("load")]
     [Authorize(Policy = UploaderAuthorization.PolicyName)]
@@ -179,6 +182,12 @@ public class RegistrationAllocationController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             loaded = ExcelFileHelper.ReadRegistrationPool(stream, file.FileName);
+
+            // Also leave out anyone in the groups already stored from earlier
+            // uploads of the sale sheets (the workbook's own groups were dealt with
+            // above), so the order the two uploads are made in doesn't matter.
+            var stored = await new AutofillStore(_config, _log).ReadStoredGroupRegNumbersAsync(ct);
+            loaded = RegistrationPoolReader.ExcludeGroupMembers(loaded, stored);
         }
         catch (InvalidOperationException ex)
         {
@@ -197,7 +206,7 @@ public class RegistrationAllocationController : ControllerBase
                 (pool.Replace(loaded.Entries, file.FileName, DateTimeOffset.UtcNow), true), ct);
 
             PoolLog.Loaded(_log, file.FileName, loaded.SheetName, replaced.Total, replaced.Added,
-                replaced.StillAllocated, replaced.DroppedAllocated, loaded.SkippedRows, loaded.DuplicateRows);
+                replaced.StillAllocated, replaced.DroppedAllocated, loaded.SkippedRows, loaded.DuplicateRows, loaded.InGroupsRows);
 
             return Ok(new
             {
@@ -208,6 +217,7 @@ public class RegistrationAllocationController : ControllerBase
                 droppedAllocated = replaced.DroppedAllocated,
                 skippedRows = loaded.SkippedRows,
                 duplicateRows = loaded.DuplicateRows,
+                inGroupsRows = loaded.InGroupsRows,
             });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
