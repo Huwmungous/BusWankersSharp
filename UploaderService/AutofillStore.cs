@@ -198,6 +198,26 @@ public sealed class AutofillStore
     }
 
     /// <summary>
+    /// The registration pool and who holds each pair (see RegistrationPoolStore) -
+    /// one more non-csv file in the store, so List() never offers it as an
+    /// autofill file, and it lives outside the deploy path like everything else here.
+    /// </summary>
+    public const string RegistrationPoolFileName = "registration_pool.json";
+
+    /// <summary>Full path of registration_pool.json, or null if no pool has been loaded.</summary>
+    public string? RegistrationPoolPath
+    {
+        get
+        {
+            var path = Path.Combine(_directory, RegistrationPoolFileName);
+            return File.Exists(path) ? path : null;
+        }
+    }
+
+    public Task SaveRegistrationPoolAsync(byte[] json, CancellationToken ct = default) =>
+        WriteAtomicAsync(RegistrationPoolFileName, json, ct);
+
+    /// <summary>
     /// The suffix for a sale's structured-groups sidecar, alongside its autofill
     /// CSV - "coach_autofill.csv" gets "coach_autofill.groups.json". This is what
     /// the bookmarklet itself fetches live, cross-origin, at click time (see

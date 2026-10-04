@@ -30,7 +30,7 @@ describe('tabsFor', () => {
   });
 
   test('anyone else sees everything except Update Files', () => {
-    expect(ids(tabsFor(false))).toEqual(['documentation', 'groups', 'running-order', 'test-form', 'launch']);
+    expect(ids(tabsFor(false))).toEqual(['documentation', 'groups', 'registrations', 'running-order', 'test-form', 'launch']);
   });
 
   test('Update Files is the only uploaders-only tab', () => {
@@ -76,6 +76,16 @@ describe('useActiveTab', () => {
 
     expect(window.location.hash).toBe('#groups');
     expect(result.current[0]).toBe('groups');
+  });
+
+  test('the Registrations tab sits after Groups and is open to everyone signed in', () => {
+    expect(ids(TABS).indexOf('registrations')).toBe(ids(TABS).indexOf('groups') + 1);
+    expect(TABS.find((t) => t.id === 'registrations').uploadersOnly).toBeFalsy();
+
+    currentUser = ordinaryUser;
+    window.location.hash = '#registrations';
+    const { result } = renderHook(() => useActiveTab());
+    expect(result.current[0]).toBe('registrations');
   });
 
   test('other tabs still work for a non-member', () => {

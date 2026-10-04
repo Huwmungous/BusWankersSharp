@@ -3,6 +3,8 @@ import DocumentationSection from './DocumentationSection';
 import GroupsSection from './GroupsSection';
 import IngestBar from './IngestBar';
 import LaunchSection from './LaunchSection';
+import RegistrationPoolLoader from './RegistrationPoolLoader';
+import RegistrationsSection from './RegistrationsSection';
 import RunningOrderSection from './RunningOrderSection';
 import TestSection from './TestSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
@@ -44,12 +46,14 @@ const mergeStoredFiles = (prev, next) => {
   return changed ? merged : prev;
 };
 
-// The site is one page with six tabs (see src/tabs.js): Update Files (upload
-// a spreadsheet to refresh the live autofill files - members of the "uploaders"
-// group only, so everyone else sees five), Documentation (the
+// The site is one page with seven tabs (see src/tabs.js): Update Files (upload
+// a spreadsheet to refresh the live autofill files, and the compiled
+// spreadsheet behind the Registrations tab - members of the "uploaders"
+// group only, so everyone else sees six), Documentation (the
 // landing tab - pick and download your autofill file), Groups (a standalone
 // copy/paste fallback for every group, for when the bookmark, bookmarklet,
-// extension or Launcher jump doesn't work), Running Order (who's on this
+// extension or Launcher jump doesn't work), Registrations (one registration
+// number and postcode at a time, each handed to one person only), Running Order (who's on this
 // year's roster), Test Form (a mockup of the registration form) and Launcher
 // (arm this browser to open the ticket page at the sale time).
 //
@@ -78,6 +82,10 @@ const BusWankersPage = () => {
   // Documentation tab, and picking a different sale in either place moves
   // both (they're both permanently mounted, just hidden - see tabProps).
   const [saleType, setSaleType] = useState('Coach');
+  // Bumped when an uploader loads a new compiled spreadsheet, so the
+  // Registrations tab (permanently mounted, just hidden) re-reads its pool.
+  const [registrationsVersion, setRegistrationsVersion] = useState(0);
+  const handleRegistrationsLoaded = useCallback(() => setRegistrationsVersion((v) => v + 1), []);
 
   // Whether a listing has ever loaded successfully. A ref, not state: it only
   // steers how a later background re-check treats a failure, and must be
@@ -189,6 +197,7 @@ const BusWankersPage = () => {
       {uploader && (
         <div {...tabProps('update-files')}>
           <IngestBar onIngested={refreshStore} />
+          <RegistrationPoolLoader onLoaded={handleRegistrationsLoaded} />
         </div>
       )}
       <div {...tabProps('documentation')}>
@@ -213,6 +222,9 @@ const BusWankersPage = () => {
           onSaleTypeChange={setSaleType}
           runningOrder={runningOrder}
         />
+      </div>
+      <div {...tabProps('registrations')}>
+        <RegistrationsSection active={activeTab === 'registrations'} reloadKey={registrationsVersion} />
       </div>
       <div {...tabProps('running-order')}>
         <RunningOrderSection
