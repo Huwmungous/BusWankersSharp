@@ -164,6 +164,43 @@
   color: #a4231b;
 }
 
+.registrations-clear {
+  margin: 24px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed #ccd3da;
+  text-align: right;
+}
+
+.registrations-clear-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  text-align: left;
+  color: #a4231b;
+}
+
+.registrations-clear-button {
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid #c0392b;
+  background-color: white;
+  color: #c0392b;
+  font-size: 1em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.registrations-clear-button:hover:not(:disabled) {
+  background-color: #fdecea;
+}
+
+.registrations-clear-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .registrations-section {
     padding: 12px;
