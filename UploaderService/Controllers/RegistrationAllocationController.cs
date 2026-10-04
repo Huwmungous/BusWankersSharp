@@ -51,11 +51,13 @@ public class RegistrationAllocationController : ControllerBase
     private static readonly Regex ClaimantShape = new("^[A-Za-z0-9-]{8,64}$", RegexOptions.Compiled);
 
     private readonly ILogger<RegistrationAllocationController> _log;
+    private readonly IConfiguration _config;
     private readonly RegistrationPoolStore _pool;
 
     public RegistrationAllocationController(IConfiguration config, ILogger<RegistrationAllocationController> log)
     {
         _log = log;
+        _config = config;
 
         var minutes = config.GetValue<int?>(HoldMinutesKey);
         var holdFor = minutes is > 0 ? TimeSpan.FromMinutes(minutes.Value) : RegistrationPool.DefaultHoldFor;
