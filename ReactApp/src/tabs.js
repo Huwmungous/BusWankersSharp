@@ -17,6 +17,9 @@ export const TABS = [
   // Standalone copy/paste fallback for every group - see GroupsSection - for
   // when the bookmark, bookmarklet, extension or Launcher jump doesn't work.
   { id: 'groups', label: 'Groups' },
+  // Hands out one (registration number, postcode) pair at a time from the
+  // compiled spreadsheet, each to one person only - see RegistrationsSection.
+  { id: 'registrations', label: 'Registrations' },
   { id: 'running-order', label: 'Running Order' },
   { id: 'test-form', label: 'Test Form' },
   // id stays 'launch': it's the hash (#launch) that launch links point at.

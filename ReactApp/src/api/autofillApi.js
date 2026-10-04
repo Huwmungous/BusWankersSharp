@@ -27,8 +27,9 @@ const apiLog = (attributes) => getLog('autofillApi', attributes);
 // Times a request and logs it either way: the route and method going out, then
 // the status and elapsed time coming back, or the network failure. One place so
 // no call in this file can go unlogged. Resolves to the Response exactly as
-// fetch() would; rethrows a network failure after logging it.
-async function loggedFetch(route, url, init) {
+// fetch() would; rethrows a network failure after logging it. Exported so the
+// registrations client (registrationsApi.js) logs its requests the same way.
+export async function loggedFetch(route, url, init) {
   const method = (init && init.method) || 'GET';
   const startedAt = performance.now();
   apiLog({ route, method }).debug('Request starting');
