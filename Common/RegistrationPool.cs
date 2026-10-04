@@ -15,7 +15,8 @@ namespace Autofills.Common
     /// <param name="Entries">Distinct pairs, in sheet order (first occurrence of a reg number wins).</param>
     /// <param name="SkippedRows">Rows ignored because the reg number or postcode was missing or not usable.</param>
     /// <param name="DuplicateRows">Rows ignored because their reg number had already appeared further up.</param>
-    public record PoolLoadResult(string SheetName, List<PoolRegistration> Entries, int SkippedRows, int DuplicateRows);
+    /// <param name="InGroupsRows">Pairs left out because that reg number is already in a group on a sale sheet.</param>
+    public record PoolLoadResult(string SheetName, List<PoolRegistration> Entries, int SkippedRows, int DuplicateRows, int InGroupsRows = 0);
 
     /// <summary>
     /// Reads the registration pool out of Hugh's compiled workbook
@@ -121,6 +122,31 @@ namespace Autofills.Common
                 throw new InvalidOperationException($"'{SheetName}' has no usable Reg Number / Postcode rows.");
 
             return new PoolLoadResult(sheet.TableName.Trim(), entries, skipped, duplicates);
+        }
+
+        /// <summary>
+        /// Takes out of a loaded pool everyone whose reg number is in
+        /// <paramref name="inGroups"/> - people already in a group are booked
+        /// through that group, so they must never be handed out from here.
+        /// Counts are added to any exclusions already made, so it can be applied
+        /// more than once (workbook groups, then stored groups). Throws
+        /// InvalidOperationException (message safe to show the uploader) if that
+        /// leaves nobody.
+        /// </summary>
+        public static PoolLoadResult ExcludeGroupMembers(PoolLoadResult loaded, IReadOnlySet<string> inGroups)
+        {
+            if (inGroups.Count == 0)
+                return loaded;
+
+            var kept = loaded.Entries.Where(e => !inGroups.Contains(e.RegNumber)).ToList();
+            if (kept.Count == loaded.Entries.Count)
+                return loaded;
+
+            if (kept.Count == 0)
+                throw new InvalidOperationException(
+                    $"Every registration on '{loaded.SheetName}' is already in a group, so there is nothing left to allocate.");
+
+            return loaded with { Entries = kept, InGroupsRows = loaded.InGroupsRows + (loaded.Entries.Count - kept.Count) };
         }
 
         public static string NormalisePostcode(string postcode) =>

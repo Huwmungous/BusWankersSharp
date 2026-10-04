@@ -62,6 +62,31 @@ namespace Autofills.Common
         };
 
         /// <summary>
+        /// Just the registration numbers on a sale sheet - everyone who is in one
+        /// of its groups - without building the groups themselves, so a group over
+        /// the size limit or a missing Lead Booker colour can't stop anyone being
+        /// counted. Empty when the sheet has no header row. Used to keep people who
+        /// are already in a group out of the Registrations pool.
+        /// </summary>
+        public static HashSet<string> ReadRegNumbers(DataTable sheet)
+        {
+            var regs = new HashSet<string>(StringComparer.Ordinal);
+            var (headerRow, _, regCol, _, _) = FindHeader(sheet);
+            if (headerRow < 0)
+                return regs;
+
+            for (int r = headerRow + 1; r < sheet.Rows.Count; r++)
+            {
+                var reg = CellToString(sheet.Rows[r][regCol]);
+                if (!string.IsNullOrEmpty(reg))
+                    regs.Add(reg);
+            }
+
+            return regs;
+        }
+
+
+        /// <summary>
         /// Same as ReadGroups(sheet, maxInAGroup) below, plus the Lead Booker
         /// concept (2026-09-18): each group has one person marked as its
         /// "Lead Booker" by colouring their First/Last name cell red on the

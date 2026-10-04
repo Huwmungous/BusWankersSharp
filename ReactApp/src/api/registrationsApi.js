@@ -144,7 +144,7 @@ export async function claimRegistration(regNumber) {
 
 // Uploaders only: read the "Unique Reg Numbers" sheet of the compiled
 // workbook into the pool. Resolves to the server's summary { sheet, total,
-// added, stillAllocated, droppedAllocated, skippedRows, duplicateRows }.
+// added, stillAllocated, droppedAllocated, skippedRows, duplicateRows, inGroupsRows }.
 export async function loadRegistrationPool(file) {
   regLog({ fileName: file && file.name, fileBytes: file && file.size }).info('Registration pool load requested');
 
