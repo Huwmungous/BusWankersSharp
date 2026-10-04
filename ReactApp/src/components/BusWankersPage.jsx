@@ -10,6 +10,7 @@ import TestSection from './TestSection';
 import { fetchRunningOrder, fetchStoredFiles } from '../api/autofillApi';
 import { DEFAULT_YEAR } from '../festival';
 import { useIsUploader } from '../auth/uploaders';
+import { useIsClearAllUser } from '../auth/clearAll';
 import { useActiveTab } from '../tabs';
 import { getLog, asError } from '../log';
 import './BusWankersPage.css';
@@ -70,6 +71,7 @@ const BusWankersPage = () => {
   // enforces the same rule on the ingest route - this just keeps the page from
   // offering a control that would be refused).
   const uploader = useIsUploader();
+  const canClearRegistrations = useIsClearAllUser();
   const [storedFiles, setStoredFiles] = useState(new Map());
   const [storeStatus, setStoreStatus] = useState('loading'); // loading | ready | error
   const [storeError, setStoreError] = useState('');
@@ -224,7 +226,11 @@ const BusWankersPage = () => {
         />
       </div>
       <div {...tabProps('registrations')}>
-        <RegistrationsSection active={activeTab === 'registrations'} reloadKey={registrationsVersion} />
+        <RegistrationsSection
+          active={activeTab === 'registrations'}
+          reloadKey={registrationsVersion}
+          canClearAll={canClearRegistrations}
+        />
       </div>
       <div {...tabProps('running-order')}>
         <RunningOrderSection

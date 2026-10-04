@@ -162,3 +162,23 @@ export async function loadRegistrationPool(file) {
   regLog({ total: summary.total, added: summary.added, stillAllocated: summary.stillAllocated }).info('Registration pool loaded');
   return summary;
 }
+
+// Clear all (CampDad only): every registration becomes available again. The
+// server enforces who may do this - a 403 here means the signed-in user is not
+// CampDad, whatever the page showed. Resolves to { cleared, state } where
+// cleared is how many takings were undone.
+export async function clearRegistrations() {
+  regLog().info('Clear all registrations requested');
+
+  const response = await loggedFetch('registrations/clear', `${REGISTRATIONS_BASE}/clear`, { method: 'POST' });
+  if (response.status === 403) {
+    throw new Error(await readErrorMessage(response, 'Only CampDad can clear all the registrations.'));
+  }
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Clearing the registrations failed (${response.status}).`));
+  }
+  const body = await response.json();
+  const result = { cleared: (body && body.cleared) || 0, state: normaliseState(body && body.state) };
+  regLog({ cleared: result.cleared, total: result.state.total }).info('All registrations cleared');
+  return result;
+}

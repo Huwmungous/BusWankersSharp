@@ -357,6 +357,26 @@ namespace Autofills.Common
         }
 
         /// <summary>
+        /// Lets go of every taking and every hold, so each pair in the list is
+        /// available again - the list itself (and its order) is untouched. Returns
+        /// how many takings were undone, for the log and the confirmation.
+        /// </summary>
+        public int ClearAll()
+        {
+            int cleared = _entries.Count(e => e.IsAllocated);
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                var e = _entries[i];
+                if (e.AllocatedTo != null || e.AllocatedAt != null || e.HeldBy != null || e.HeldAt != null)
+                    _entries[i] = e with { AllocatedTo = null, AllocatedAt = null, HeldBy = null, HeldAt = null };
+            }
+
+            return cleared;
+        }
+
+
+        /// <summary>
         /// Replaces the list with a freshly read one (a new upload), keeping
         /// every taking and every hold for a reg number that is still in it -
         /// reloading must never hand out something already given away. A taken

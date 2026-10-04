@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   openRegistrations: vi.fn(),
   fetchNextRegistration: vi.fn(),
   claimRegistration: vi.fn(),
+  clearRegistrations: vi.fn(),
 }));
 const clipboard = vi.hoisted(() => ({ copyWhenReady: vi.fn() }));
 
@@ -219,4 +220,52 @@ test('says the rest are being held by others when none is free but some remain',
 
   expect(await screen.findByText(HELD_BY_OTHERS_MESSAGE)).toBeTruthy();
   expect(screen.queryByText(ALL_ALLOCATED_MESSAGE)).toBeNull();
+});
+
+test('there is no Clear all button unless the user is allowed it', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  render(<RegistrationsSection />);
+  await screen.findByText('1111111');
+
+  expect(screen.queryByRole('button', { name: 'Clear all' })).toBeNull();
+});
+
+test('Clear all asks first, then clears and opens a fresh pair', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  api.clearRegistrations.mockResolvedValue({ cleared: 2, state: state() });
+  render(<RegistrationsSection canClearAll />);
+  await screen.findByText('1111111');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+  expect(api.clearRegistrations).not.toHaveBeenCalled(); // only asked so far
+
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, clear all' }));
+
+  expect(await screen.findByText(/2 taken registrations were released/)).toBeTruthy();
+  expect(api.clearRegistrations).toHaveBeenCalledTimes(1);
+  expect(api.openRegistrations).toHaveBeenCalledTimes(2); // the tab re-opened
+});
+
+test('Cancel leaves everything as it was', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  render(<RegistrationsSection canClearAll />);
+  await screen.findByText('1111111');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+  expect(api.clearRegistrations).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Clear all' })).toBeTruthy();
+});
+
+test('says so when the server refuses the clear', async () => {
+  api.openRegistrations.mockResolvedValue(state());
+  api.clearRegistrations.mockRejectedValue(new Error('Only CampDad can clear all the registrations.'));
+  render(<RegistrationsSection canClearAll />);
+  await screen.findByText('1111111');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, clear all' }));
+
+  expect(await screen.findByText(/Only CampDad can clear/)).toBeTruthy();
 });

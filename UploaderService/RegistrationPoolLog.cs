@@ -45,6 +45,14 @@ internal static partial class PoolLog
         Message = "Registration request failed unexpectedly: Route={Route}")]
     public static partial void Failed(ILogger logger, Exception exception, string route);
 
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Registration pool cleared: Caller={Caller} Total={Total} TakingsCleared={TakingsCleared}")]
+    public static partial void Cleared(ILogger logger, string caller, int total, int takingsCleared);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Clear-all refused - caller is not the permitted user: Caller={Caller}")]
+    public static partial void ClearRefused(ILogger logger, string caller);
+
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Registration pool load requested: Caller={Caller} Upload={Upload} Bytes={Bytes}")]
     public static partial void LoadRequested(ILogger logger, string caller, string? upload, long? bytes);

@@ -476,6 +476,58 @@ public class RegistrationPoolTests
     }
 }
 
+// Clear all (CampDad only, enforced by the controller): every taking and hold
+// is undone, the list stays.
+public class RegistrationPoolClearAllTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 4, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ClearAllMakesEveryPairAvailableAgainAndKeepsTheList()
+    {
+        var pool = new RegistrationPool(new[]
+        {
+            new PoolEntry("11111111", "S1 1AA", "a-browser", Now, null, null),
+            new PoolEntry("22222222", "S1 1AB", null, null, "b-browser", Now),
+            new PoolEntry("33333333", "S1 1AC"),
+        });
+
+        var cleared = pool.ClearAll();
+
+        Assert.Equal(1, cleared); // one taking undone (a hold isn't a taking)
+        Assert.Equal(3, pool.Total);
+        Assert.Equal(3, pool.Remaining);
+        Assert.False(pool.AllAllocated);
+        Assert.All(pool.Entries, e =>
+        {
+            Assert.Null(e.AllocatedTo);
+            Assert.Null(e.HeldBy);
+        });
+        Assert.Equal(new[] { "11111111", "22222222", "33333333" }, pool.Entries.Select(e => e.RegNumber));
+    }
+
+    [Fact]
+    public void AfterClearAllAnotherBrowserCanBeGivenWhatWasTaken()
+    {
+        var pool = new RegistrationPool(new[] { new PoolEntry("11111111", "S1 1AA") });
+        pool.Open("first-browser", Now);
+        pool.Claim("11111111", "first-browser", Now);
+        Assert.True(pool.AllAllocated);
+
+        pool.ClearAll();
+
+        var shown = pool.Open("second-browser", Now);
+        Assert.Equal("11111111", shown?.RegNumber);
+    }
+
+    [Fact]
+    public void ClearAllOnAnEmptyPoolDoesNothing()
+    {
+        Assert.Equal(0, new RegistrationPool().ClearAll());
+    }
+}
+
+
 // People already in a group on a sale sheet are booked through that group, so
 // they are left out of the Registrations pool (2026-10-04).
 public class RegistrationPoolGroupExclusionTests

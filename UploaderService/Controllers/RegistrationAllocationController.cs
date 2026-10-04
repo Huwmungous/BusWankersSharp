@@ -23,6 +23,7 @@ namespace Autofills.UploaderService.Controllers;
 ///   POST /claim  - the Copy button: take the pair for this browser if it is
 ///                  still its to take; if somebody else has it, say so and
 ///                  hold the next available pair instead
+///   POST /clear  - (CampDad only) make every pair available again
 ///   POST /load   - (uploaders only) read the "Unique Reg Numbers" sheet of the
 ///                  compiled workbook into the pool, keeping every taking
 ///
@@ -44,6 +45,8 @@ namespace Autofills.UploaderService.Controllers;
 public class RegistrationAllocationController : ControllerBase
 {
     private const string HoldMinutesKey = "Registrations:HoldMinutes";
+    private const string ClearAllUserKey = "Registrations:ClearAllUser";
+    private const string DefaultClearAllUser = "CampDad";
 
     private static readonly Regex ClaimantShape = new("^[A-Za-z0-9-]{8,64}$", RegexOptions.Compiled);
 
@@ -223,6 +226,45 @@ public class RegistrationAllocationController : ControllerBase
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return Failure(ex, "load");
+        }
+    }
+
+    /// <summary>
+    /// Clear all: every pair in the pool becomes available again (takings and
+    /// holds are all undone; the list stays loaded). Only the one permitted
+    /// user - Registrations:ClearAllUser, "CampDad" unless configured otherwise -
+    /// may do this; anyone else gets 403 whatever the page showed them. The
+    /// name is the sign-in's preferred_username, compared without regard to case.
+    /// </summary>
+    [HttpPost("clear")]
+    public async Task<IActionResult> Clear(CancellationToken ct)
+    {
+        var caller = CallerName();
+        var permitted = _config[ClearAllUserKey];
+        if (string.IsNullOrWhiteSpace(permitted))
+            permitted = DefaultClearAllUser;
+
+        if (!string.Equals(caller, permitted.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            PoolLog.ClearRefused(_log, caller);
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Only " + permitted.Trim() + " can clear all the registrations." });
+        }
+
+        try
+        {
+            var cleared = 0;
+            var state = await _pool.UseAsync(pool =>
+            {
+                cleared = pool.ClearAll();
+                return (new PoolState(pool.Total > 0, pool.Total, pool.Remaining, pool.AllAllocated, false, null), true);
+            }, ct);
+
+            PoolLog.Cleared(_log, caller, state.Total, cleared);
+            return Ok(new { cleared, state });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Failure(ex, "clear");
         }
     }
 

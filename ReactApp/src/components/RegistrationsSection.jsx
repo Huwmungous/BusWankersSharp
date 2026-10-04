@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   claimRegistration,
+  clearRegistrations,
   fetchNextRegistration,
   openRegistrations,
 } from '../api/registrationsApi';
@@ -67,7 +68,8 @@ const FieldRow = ({ id, label, value, copied, disabled, onCopy }) => (
 // moment the page loaded, whichever tab they were on: nothing is requested
 // until the tab is actually opened. reloadKey changes when an uploader loads a
 // new spreadsheet, so the tab re-reads rather than showing the old pool.
-const RegistrationsSection = ({ active = true, reloadKey = 0 }) => {
+const RegistrationsSection = ({ active = true, reloadKey = 0, canClearAll = false }) => {
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState(NO_STATE);
@@ -176,6 +178,30 @@ const RegistrationsSection = ({ active = true, reloadKey = 0 }) => {
     }
   }, [busy, view.entry, showCopied]);
 
+  // Clear all (only offered to CampDad, and refused by the server for anyone
+  // else): asks twice - the first press only asks "are you sure?" - then makes
+  // every registration available again and re-opens the tab for a fresh pair.
+  const onClearAll = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setConfirmingClear(false);
+    setNotice(null);
+    try {
+      const { cleared } = await clearRegistrations();
+      sectionLog({ cleared }).info('All registrations cleared');
+      await load();
+      setNotice({
+        kind: 'info',
+        text: `Cleared: ${cleared} taken ${cleared === 1 ? 'registration was' : 'registrations were'} released. Every registration is available again.`,
+      });
+    } catch (err) {
+      sectionLog({ reason: err && err.message }).warn('Clear all failed', asError(err));
+      setNotice({ kind: 'error', text: (err && err.message) || 'Could not reach the upload service.' });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, load]);
+
   const { entry } = view;
 
   return (
@@ -247,6 +273,31 @@ const RegistrationsSection = ({ active = true, reloadKey = 0 }) => {
               </span>
             </div>
           </>
+        )}
+
+        {canClearAll && status === 'ready' && view.loaded && (
+          <div className="registrations-clear">
+            {!confirmingClear ? (
+              <button
+                type="button"
+                className="registrations-clear-button"
+                onClick={() => setConfirmingClear(true)}
+                disabled={busy}
+              >
+                Clear all
+              </button>
+            ) : (
+              <div role="alert" className="registrations-clear-confirm">
+                <span>Make every registration available again, including the ones already taken?</span>
+                <button type="button" className="registrations-clear-button" onClick={onClearAll} disabled={busy}>
+                  Yes, clear all
+                </button>
+                <button type="button" className="registrations-next" onClick={() => setConfirmingClear(false)} disabled={busy}>
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {notice && (
