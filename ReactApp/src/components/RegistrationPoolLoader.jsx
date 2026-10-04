@@ -14,6 +14,7 @@ export const describeLoad = (summary) => {
   if (summary.stillAllocated) parts.push(`${summary.stillAllocated} already allocated (kept)`);
   if (summary.droppedAllocated) parts.push(`${summary.droppedAllocated} allocated but no longer in the sheet`);
   if (summary.duplicateRows) parts.push(`${summary.duplicateRows} duplicate row${summary.duplicateRows === 1 ? '' : 's'} ignored`);
+  if (summary.inGroupsRows) parts.push(`${summary.inGroupsRows} left out because already in a group`);
   if (summary.skippedRows) parts.push(`${summary.skippedRows} row${summary.skippedRows === 1 ? '' : 's'} skipped (no usable reg number or postcode)`);
   return `${parts.join(', ')}.`;
 };
