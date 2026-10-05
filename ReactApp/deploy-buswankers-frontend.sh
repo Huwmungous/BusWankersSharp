@@ -222,6 +222,22 @@ if [ "$DO_BUILD" = true ]; then
         npm run rebuild
     fi
     echo -e "${GREEN}[OK] Frontend built${NC}"
+
+    # The rebuild above runs npm install INSIDE the Infoforum checkout (package.json
+    # does `npm --prefix ../../Infoforum/if-web-common-react run rebuild`), which
+    # rewrites those libraries' TRACKED package-lock.json files. This app's npm
+    # settings (legacy-peer-deps) can leave a different lockfile from the one
+    # committed in Infoforum. A dirty tracked file makes every later `git pull` of
+    # Infoforum on this box fail with "You have unstaged changes", which broke the
+    # buswankers backend, mcp servers and soak steps of the deploy (2026-10-05).
+    # The build has already used what npm installed, so put the lockfiles back to
+    # what is committed. Best effort: never fail the deploy over this.
+    echo "    Restoring the Infoforum shared-library lockfiles that npm rewrote ..."
+    if git -C "$IF_REPO" checkout -- if-web-common/package-lock.json if-web-common-react/package-lock.json; then
+        echo -e "${GREEN}[OK] Infoforum lockfiles match the committed versions${NC}"
+    else
+        echo -e "${YELLOW}[WARN] Could not restore the Infoforum lockfiles - the next Infoforum git pull may fail on local changes${NC}"
+    fi
 else
     echo -e "${YELLOW}>>> Phase 2: Build (skipped) - deploying existing build/${NC}"
 fi
