@@ -179,7 +179,7 @@ namespace Autofills.Common
 
             using var doc = SpreadsheetDocument.Open(excelStream, false);
             var workbookPart = doc.WorkbookPart;
-            if (workbookPart == null)
+            if (workbookPart?.Workbook == null)
                 return new HashSet<int>();
 
             var sheetMeta = workbookPart.Workbook.Descendants<Sheet>()
@@ -187,7 +187,8 @@ namespace Autofills.Common
             if (sheetMeta?.Id?.Value == null)
                 return new HashSet<int>();
 
-            if (workbookPart.GetPartById(sheetMeta.Id.Value!) is not WorksheetPart worksheetPart)
+            if (workbookPart.GetPartById(sheetMeta.Id.Value!) is not WorksheetPart worksheetPart
+                || worksheetPart.Worksheet == null)
                 return new HashSet<int>();
 
             var sheetData = worksheetPart.Worksheet.Elements<SheetData>().FirstOrDefault();

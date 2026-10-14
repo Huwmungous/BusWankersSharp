@@ -362,7 +362,7 @@ public class RegistrationPoolTests
         pool.Next("1", "alice", Now);
         pool.Next("2", "alice", Now);
 
-        Assert.Single(pool.Entries.Where(e => e.HeldBy == "alice"));
+        Assert.Single(pool.Entries, e => e.HeldBy == "alice");
     }
 
     [Fact]
