@@ -11,16 +11,16 @@
          ServiceFactory hands back Swashbuckle SwaggerGenOptions/SwaggerUIOptions
          types directly, so this project's package versions need to line up with
          whatever IFGlobal was built against. -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Infoforum\csharp\IFGlobal\IFGlobal.csproj" />
     <ProjectReference Include="..\Common\Common.csproj" />
     <!-- Sibling checkout assumption: ~/repos/BusWankersSharp and ~/repos/Infoforum
          side by side (matches deploy-buswankers-backend.sh's BW_REPO/IF_REPO
          defaults). -->
-    <ProjectReference Include="..\..\Infoforum\csharp\IFGlobal\IFGlobal.csproj" />
   </ItemGroup>
 
 </Project>
