@@ -5,7 +5,11 @@ import { useAutofillGroups } from '../useAutofillGroups';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { DEFAULT_YEAR } from '../festival';
 import { buildNameLookup, nameForRegistration } from '../runningOrder';
+import { getLog } from '../log';
 import './GroupsSection.css';
+
+// Created when used, never at module load (see log.js).
+const groupsLog = (attributes) => getLog('GroupsSection', attributes);
 
 // Plain-text rendering of one group, for the "Copy whole group" button - one
 // line per person, tab-separated so it also pastes cleanly into a
@@ -25,6 +29,8 @@ const CopyGroupButton = ({ group, nameLookup }) => {
   const [state, setState] = useState('idle'); // idle | copied | failed
   const onClick = async () => {
     const ok = await copyText(groupAsText(group, nameLookup));
+    // Group label and size only - never the names or registration numbers.
+    groupsLog({ groupCode: group.code, members: group.members.length, copied: ok }).info('Whole group copy attempted');
     setState(ok ? 'copied' : 'failed');
     setTimeout(() => setState('idle'), 2000);
   };
@@ -55,6 +61,9 @@ const GroupRow = ({ group, nameLookup, saleFolderLabel }) => {
         <div className="groups-group-title">
           <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="groups-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
+          {group.departure && (
+            <span className="groups-group-departure">Departs from <strong>{group.departure}</strong></span>
+          )}
         </div>
         <CopyGroupButton group={group} nameLookup={nameLookup} />
       </div>
@@ -119,7 +128,10 @@ const GroupsSection = ({
             id="groupsSaleType"
             className="form-input"
             value={saleType}
-            onChange={(e) => onSaleTypeChange(e.target.value)}
+            onChange={(e) => {
+              groupsLog({ saleType: e.target.value, previousSaleType: saleType }).info('Sale selected on the Groups tab');
+              onSaleTypeChange(e.target.value);
+            }}
           >
             {Object.entries(SALE_INFO).map(([key, tab]) => {
               const f = storedFiles.get(tab.filename);

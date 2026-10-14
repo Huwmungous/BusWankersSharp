@@ -3,6 +3,7 @@
   color: white;
   padding: 10px 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 12px;
@@ -31,10 +32,32 @@
   color: rgba(255,255,255,0.7);
   font-size: 1.3rem;
   cursor: pointer;
+  /* A comfortable finger target: the bare glyph was about 20px square. */
+  min-width: 40px;
+  min-height: 40px;
   padding: 0 4px;
   line-height: 1;
 }
 
 .install-btn-dismiss:hover {
   color: #fff;
+}
+
+@media (max-width: 480px) {
+  .install-prompt-banner {
+    padding: 6px 12px;
+    gap: 8px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .install-btn-install {
+    min-height: 44px;
+  }
+
+  .install-btn-dismiss {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

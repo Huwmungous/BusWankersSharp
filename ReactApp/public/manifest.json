@@ -1,6 +1,7 @@
 {
   "short_name": "Bus Wankers",
   "name": "Bus Wankers - Glastonbury Autofill",
+  "description": "Glastonbury registration autofill files, bookmarklets and launcher",
   "icons": [
     {
       "src": "logo192.png",
@@ -27,8 +28,11 @@
       "purpose": "maskable"
     }
   ],
+  "id": "/buswankers/",
   "start_url": "/buswankers/",
+  "scope": "/buswankers/",
   "display": "standalone",
+  "orientation": "any",
   "theme_color": "#3b1f6b",
   "background_color": "#f7ecd3"
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchAutofillGroups } from './api/autofillApi';
+import { getLog, asError } from './log';
 
 // Loads one sale's groups from its stored autofill file, kept in step with
 // the shared store (see BusWankersPage): reloads whenever the chosen
@@ -33,15 +34,18 @@ export function useAutofillGroups(filename, storedFiles, storeStatus, storeError
       return undefined;
     }
     setStatus('loading');
+    getLog('useAutofillGroups', { fileName: filename }).debug('Loading groups');
     fetchAutofillGroups(filename).then(
       (g) => {
         if (cancelled) return;
+        getLog('useAutofillGroups', { fileName: filename, groups: g ? g.length : 0 }).debug('Groups loaded');
         setGroups(g);
         setStatus('ready');
         setError('');
       },
       (err) => {
         if (cancelled) return;
+        getLog('useAutofillGroups', { fileName: filename }).error('Groups failed to load', asError(err));
         setStatus('error');
         setError(err.message || 'Could not reach the upload service.');
       },

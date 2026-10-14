@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { correctedNow, scheduleAt, syncClock } from '../launch/clock';
 import { buildLaunchLink, loadConfig, saveConfig } from '../launch/config';
 import { formatLondon, formatLondonClock, londonWallToEpoch } from '../launch/londonTime';
+import { getLog, asError } from '../log';
 import './LaunchSection.css';
+
+// Created when used, never at module load (see ../log.js). Declared above the
+// component and every handler that calls it. Timing note: the one log on the
+// fire path (in fireLaunch) comes AFTER the launch window has been navigated.
+const launchLog = (attributes) => getLog('LaunchSection', attributes);
 
 // The "Launcher" tab: arm this browser to open the ticket page, in a window of
 // its own, at the sale time - on NTP-corrected time.
@@ -40,6 +46,9 @@ const REHEARSAL_SECONDS = 30;
 // Named target for the launch window, so re-arming reuses it rather than
 // leaving a trail of holding pages.
 const LAUNCH_WINDOW_NAME = 'buswankers-launch';
+// Tag on the postMessage the holding page sends back about its own wake lock,
+// so the listener can ignore any other message.
+const LAUNCH_WINDOW_MESSAGE_SOURCE = 'buswankers-launch-window';
 
 const isHttpUrl = (s) => {
   try {
@@ -87,12 +96,70 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 
 // The holding page shown in the launch window until the moment, so it's
 // obvious what the window is and nobody closes it by mistake.
-const holdingPageHtml = (when, url, rehearsal) => `<!doctype html><html><head><meta charset="utf-8"><title>Bus Wankers launch window - ${escapeHtml(when)}</title>
+//
+// It also holds the screen wake lock. The launch window opens in front of the
+// Launcher tab (often as a tab of its own), which hides the Launcher and makes
+// the browser drop ITS lock - so this page, the visible one, asks for its own
+// and reports the outcome back to the opener with postMessage (for the log and
+// the status line). It retries when it becomes visible or focused again. The
+// script is plain ES5 inside a template literal: no backticks or dollar-braces
+// in it, and parentOrigin is JSON-encoded with '<' escaped.
+const holdingPageHtml = (when, url, rehearsal, parentOrigin) => `<!doctype html><html><head><meta charset="utf-8"><title>Bus Wankers launch window - ${escapeHtml(when)}</title>
 <style>body{font-family:Arial,sans-serif;background:${rehearsal ? '#6d4c00' : '#1b5e20'};color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
 h1{font-size:1.6em;margin:0 0 .4em}p{margin:.3em 0;font-size:1.1em}code{font-size:.9em;opacity:.85}
-.nb{margin-top:1.2em;font-size:.95em;max-width:34em;background:rgba(255,255,255,.15);padding:.6em .9em;border-radius:6px}</style></head>
+.nb{margin-top:1.2em;font-size:.95em;max-width:34em;background:rgba(255,255,255,.15);padding:.6em .9em;border-radius:6px}
+.wl{margin-top:1em;font-size:.9em;opacity:.9}</style></head>
 <body><div><h1>Bus Wankers launch window${rehearsal ? ' (rehearsal)' : ''}</h1><p>This window will jump to</p><p><code>${escapeHtml(url)}</code></p><p>at <strong>${escapeHtml(when)}</strong></p><p>Leave it open. Don't refresh it.</p>
-<p class="nb"><strong>NB:</strong> Rehearse this at least once in case the website asks you to accept cookies - accept them then, so there's nothing to click through on the day.</p></div></body></html>`;
+<p class="wl" id="wl">Screen wake lock: asking&hellip;</p>
+<p class="nb"><strong>NB:</strong> Rehearse this at least once in case the website asks you to accept cookies - accept them then, so there's nothing to click through on the day.</p></div>
+<script>
+(function () {
+  var parentOrigin = ${JSON.stringify(parentOrigin).replace(/</g, '\\u003c')};
+  var lock = null;
+  var pending = false;
+  var label = document.getElementById('wl');
+  function show(text) { if (label) label.textContent = 'Screen wake lock: ' + text; }
+  function tell(state, errorName) {
+    try {
+      if (window.opener) {
+        window.opener.postMessage({
+          source: '${LAUNCH_WINDOW_MESSAGE_SOURCE}',
+          state: state,
+          errorName: errorName || null,
+          visibility: document.visibilityState
+        }, parentOrigin);
+      }
+    } catch (e) { /* the opener is gone; nothing to tell */ }
+  }
+  function acquire() {
+    if (!navigator.wakeLock) { show('not supported by this browser'); tell('unsupported'); return; }
+    if (lock || pending) return;
+    pending = true;
+    navigator.wakeLock.request('screen').then(function (granted) {
+      pending = false;
+      lock = granted;
+      show('on');
+      tell('held');
+      granted.addEventListener('release', function () {
+        if (lock === granted) {
+          lock = null;
+          show('off - will retry when this window is visible');
+          tell('released');
+        }
+      });
+    }, function (err) {
+      pending = false;
+      show('refused (' + (err && err.name ? err.name : 'error') + ') - will retry');
+      tell('refused', err && err.name);
+    });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') acquire();
+  });
+  window.addEventListener('focus', acquire);
+  acquire();
+})();
+<\/script></body></html>`;
 
 const LaunchSection = ({ year }) => {
   const [{ config: initialConfig, imported }] = useState(() => loadConfig());
@@ -110,10 +177,26 @@ const LaunchSection = ({ year }) => {
   const [launchWindowOpen, setLaunchWindowOpen] = useState(false);
   const [, setTick] = useState(0);
   const [copied, setCopied] = useState(false);
+  // idle | held | refused | released | unsupported. 'refused' means the browser
+  // said no (battery saver, hidden window...); 'released' means we held it and the
+  // browser took it back (tab hidden). Both are retried while armed.
+  const [wakeLockState, setWakeLockState] = useState(
+    () => (typeof navigator !== 'undefined' && navigator.wakeLock ? 'idle' : 'unsupported'),
+  );
+  // What the launch window's holding page last reported about ITS wake lock:
+  // unknown | held | refused | released | unsupported. 'unknown' until it speaks
+  // (it never will if the page's script was blocked).
+  const [launchWindowLock, setLaunchWindowLock] = useState('unknown');
 
   const syncRef = useRef(null);
   const launchWindowRef = useRef(null);
   const wakeLockRef = useRef(null);
+  // True while a request is in flight, so two triggers (arm click plus a
+  // visibilitychange, say) can't both pass the guard and leak a second lock.
+  const wakeLockPendingRef = useRef(false);
+  // True from arming until disarm/fire/unmount. Checked after the request
+  // resolves so a lock granted after a disarm is released, not kept.
+  const wakeLockWantedRef = useRef(false);
 
   const saleMs = londonWallToEpoch(config.saleAt);
   const rehearsing = rehearsalTarget != null;
@@ -145,11 +228,12 @@ const LaunchSection = ({ year }) => {
       setSync(result);
       setSyncStatus('ready');
       setSyncError('');
-      console.debug('[launch] clock synced', result);
+      launchLog({ offsetMs: result.offsetMs, rttMs: result.rttMs, samples: result.samples, spreadMs: result.spreadMs })
+        .debug('Clock synced');
     } catch (err) {
       setSyncStatus('error');
       setSyncError(err.message || 'Clock sync failed.');
-      console.debug('[launch] clock sync failed:', err && err.message);
+      launchLog().warn('Clock sync failed', asError(err));
     }
   }, []);
 
@@ -172,33 +256,109 @@ const LaunchSection = ({ year }) => {
 
   // ---- wake lock ----------------------------------------------------------
 
-  const acquireWakeLock = useCallback(async () => {
-    if (!navigator.wakeLock || wakeLockRef.current) return;
+  // The request must be made while this page is visible and focused, and it is
+  // best made straight from the Arm click. 'reason' says what triggered it so
+  // the log can tell a refusal at arm time from one on a retry.
+  const acquireWakeLock = useCallback(async (reason) => {
+    if (!navigator.wakeLock) {
+      setWakeLockState('unsupported');
+      return;
+    }
+    // Already held, or a request is in flight: nothing to do. Deliberately not
+    // logged - the retry triggers (focus, clicks) would make it noisy.
+    if (wakeLockRef.current || wakeLockPendingRef.current) return;
+    wakeLockPendingRef.current = true;
+    launchLog({ reason, visibility: document.visibilityState, focused: document.hasFocus() })
+      .debug('Screen wake lock requested');
     try {
-      wakeLockRef.current = await navigator.wakeLock.request('screen');
-      wakeLockRef.current.addEventListener('release', () => {
-        wakeLockRef.current = null;
+      const lock = await navigator.wakeLock.request('screen');
+      if (!wakeLockWantedRef.current) {
+        // Disarmed (or fired, or unmounted) while the request was in flight.
+        launchLog({ reason }).debug('Screen wake lock granted after it was no longer wanted - releasing');
+        lock.release().catch(() => {});
+        return;
+      }
+      wakeLockRef.current = lock;
+      lock.addEventListener('release', () => {
+        // Compare with THIS lock: a stale release event must not clear a newer one.
+        if (wakeLockRef.current === lock) {
+          wakeLockRef.current = null;
+          if (wakeLockWantedRef.current) setWakeLockState('released');
+          launchLog({ visibility: document.visibilityState }).info('Screen wake lock released by the browser');
+        }
       });
-      console.debug('[launch] screen wake lock acquired');
+      setWakeLockState('held');
+      launchLog({ reason }).debug('Screen wake lock acquired');
     } catch (err) {
-      console.debug('[launch] wake lock refused:', err && err.message);
+      setWakeLockState('refused');
+      launchLog({
+        reason,
+        errorName: err && err.name,
+        visibility: document.visibilityState,
+        focused: document.hasFocus(),
+      }).warn('Screen wake lock refused', asError(err));
+    } finally {
+      wakeLockPendingRef.current = false;
     }
   }, []);
 
   const releaseWakeLock = useCallback(() => {
     const lock = wakeLockRef.current;
+    wakeLockWantedRef.current = false;
     wakeLockRef.current = null;
-    if (lock) lock.release().catch(() => {});
+    setWakeLockState((was) => (was === 'unsupported' ? was : 'idle'));
+    setLaunchWindowLock('unknown');
+    if (lock) {
+      lock.release().catch(() => {});
+      launchLog().debug('Screen wake lock released by us');
+    }
   }, []);
 
+  // While armed, try again whenever the page comes back to the foreground or
+  // the user touches it - those are the moments a refused or released lock can
+  // succeed. acquireWakeLock is a no-op while a lock is held or in flight.
   useEffect(() => {
     if (!armed) return undefined;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') acquireWakeLock();
+    const retryOn = (reason) => () => {
+      if (document.visibilityState === 'visible') acquireWakeLock(reason);
     };
+    const onVisible = retryOn('visibilitychange');
+    const onFocus = retryOn('focus');
+    const onPointer = retryOn('pointerdown');
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pointerdown', onPointer);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pointerdown', onPointer);
+    };
   }, [armed, acquireWakeLock]);
+
+  // Never leave a lock behind if this section goes away while armed.
+  useEffect(() => () => releaseWakeLock(), [releaseWakeLock]);
+
+  // The launch window's holding page holds a wake lock of its own (see
+  // holdingPageHtml) and tells us how it is getting on. Only messages from our
+  // own origin, from the current launch window, carrying our tag are heard.
+  useEffect(() => {
+    const onMessage = (event) => {
+      const data = event.data;
+      if (event.origin !== window.location.origin) return;
+      if (!data || data.source !== LAUNCH_WINDOW_MESSAGE_SOURCE) return;
+      if (!launchWindowRef.current || event.source !== launchWindowRef.current) return;
+      const state = String(data.state);
+      setLaunchWindowLock(state);
+      const log = launchLog({ state, errorName: data.errorName, visibility: data.visibility });
+      if (state === 'held') log.debug('Launch window screen wake lock acquired');
+      else if (state === 'released') log.info('Launch window screen wake lock released by the browser');
+      else if (state === 'refused') log.warn('Launch window screen wake lock refused');
+      else log.warn('Launch window screen wake lock unavailable');
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
 
   // ---- the launch window --------------------------------------------------
 
@@ -210,20 +370,21 @@ const LaunchSection = ({ year }) => {
     try {
       w = window.open('', LAUNCH_WINDOW_NAME);
     } catch (err) {
-      console.debug('[launch] window.open threw:', err && err.message);
+      launchLog().error('window.open threw while opening the launch window', asError(err));
     }
     if (!w) {
+      launchLog().warn('Launch window blocked by the browser (pop-up blocker?)');
       launchWindowRef.current = null;
       setLaunchWindowOpen(false);
       return false;
     }
     try {
       w.document.open();
-      w.document.write(holdingPageHtml(formatLondon(whenMs), config.url, rehearsal));
+      w.document.write(holdingPageHtml(formatLondon(whenMs), config.url, rehearsal, window.location.origin));
       w.document.close();
     } catch (err) {
       // A stale window on another origin - still ours to navigate later.
-      console.debug('[launch] could not write holding page:', err && err.message);
+      launchLog().warn('Could not write the holding page into the launch window', asError(err));
     }
     launchWindowRef.current = w;
     setLaunchWindowOpen(true);
@@ -255,6 +416,12 @@ const LaunchSection = ({ year }) => {
     let how = 'launch window';
     const w = launchWindowRef.current;
     let done = false;
+    // Problems on the fire path are remembered here and logged afterwards, once
+    // the launch window has been navigated (or a fresh one opened) - nothing is
+    // logged between the moment and that jump. Only the last-resort fallback,
+    // this tab navigating itself, follows the log line, as it did the old one.
+    let navigationError = null;
+    let openError = null;
     if (w && !w.closed) {
       try {
         w.location.href = url;
@@ -265,7 +432,7 @@ const LaunchSection = ({ year }) => {
           // focus is best-effort
         }
       } catch (err) {
-        console.debug('[launch] launch window navigation failed:', err && err.message);
+        navigationError = err;
       }
     }
     if (!done) {
@@ -274,7 +441,8 @@ const LaunchSection = ({ year }) => {
       let fresh = null;
       try {
         fresh = window.open(url, LAUNCH_WINDOW_NAME);
-      } catch {
+      } catch (err) {
+        openError = err;
         fresh = null;
       }
       if (fresh) {
@@ -283,7 +451,16 @@ const LaunchSection = ({ year }) => {
         done = true;
       }
     }
-    console.debug(`[launch] FIRED via ${via}, ${lateMs.toFixed(1)} ms after the (lead ${config.leadMs} ms, stagger +${staggerDraw} ms) moment -> ${url} (${done ? how : 'this tab'})`);
+    if (navigationError) launchLog().error('Launch window navigation failed', asError(navigationError));
+    if (openError) launchLog().error('Opening a fresh launch window failed', asError(openError));
+    launchLog({
+      via,
+      lateMs: lateMs.toFixed(1),
+      leadMs: config.leadMs,
+      staggerMs: staggerDraw,
+      rehearsal,
+      how: done ? how : 'this tab',
+    }).info('Launch FIRED');
     setFired({ via, lateMs, how: done ? how : 'this tab', rehearsal, staggerMs: staggerDraw });
     setArmed(false);
     setRehearsalTarget(null);
@@ -319,6 +496,14 @@ const LaunchSection = ({ year }) => {
   }, [armed, targetMs, effectiveLeadMs, fireLaunch, runSync]);
 
   const armFor = (whenMs, rehearsal) => {
+    // Ask for this tab's wake lock first, straight from the click. Opening the
+    // launch window usually hides this tab (it often opens as a tab in front),
+    // and the browser then drops the lock - that is why the launch window's
+    // holding page asks for one of its own. This one still covers the case where
+    // the launch window is a separate window sitting beside this one.
+    wakeLockWantedRef.current = true;
+    setLaunchWindowLock('unknown');
+    acquireWakeLock('arm');
     const opened = openLaunchWindow(whenMs, rehearsal);
     const draw = config.staggerMs > 0 ? Math.round(Math.random() * config.staggerMs) : 0;
     setStaggerDraw(draw);
@@ -328,20 +513,30 @@ const LaunchSection = ({ year }) => {
       ? ''
       : 'The browser blocked the launch window - allow pop-ups for this site and arm again. Until then, this tab itself will jump at the moment.');
     setArmed(true);
-    acquireWakeLock();
-    console.debug(`[launch] ${rehearsal ? 'REHEARSAL ' : ''}armed for ${formatLondon(whenMs)} (lead ${config.leadMs} ms, stagger +${draw} of up to ${config.staggerMs} ms), launch window ${opened ? 'open' : 'BLOCKED'}`);
+    launchLog({
+      rehearsal,
+      armedFor: formatLondon(whenMs),
+      leadMs: config.leadMs,
+      staggerDrawMs: draw,
+      staggerMaxMs: config.staggerMs,
+      launchWindow: opened ? 'open' : 'blocked',
+    }).info('Launch armed');
   };
 
   const arm = () => {
+    launchLog({ saleAt: config.saleAt, urlOk }).debug('Arm requested');
     if (!urlOk) {
+      launchLog().warn('Arm refused - the ticket URL is not a full http(s) address');
       setNotice('The ticket URL needs to be a full http(s) address.');
       return;
     }
     if (saleMs == null) {
+      launchLog().warn('Arm refused - no sale time set');
       setNotice('Set the sale time first.');
       return;
     }
     if (!saleInFuture) {
+      launchLog({ saleAt: config.saleAt }).warn('Arm refused - the sale time has already passed');
       setNotice('That sale time has already passed.');
       return;
     }
@@ -352,7 +547,9 @@ const LaunchSection = ({ year }) => {
   // time - the saved settings are untouched, so a rehearsal can't leave a
   // wrong date behind.
   const rehearse = () => {
+    launchLog({ urlOk }).debug('Rehearsal requested');
     if (!urlOk) {
+      launchLog().warn('Rehearsal refused - the ticket URL is not a full http(s) address');
       setNotice('The ticket URL needs to be a full http(s) address.');
       return;
     }
@@ -365,16 +562,18 @@ const LaunchSection = ({ year }) => {
     releaseWakeLock();
     closeLaunchWindow();
     setNotice('Disarmed.');
-    console.debug('[launch] disarmed');
+    launchLog({ rehearsal: rehearsalTarget != null }).info('Launch disarmed');
   };
 
   const copyLink = async () => {
     const link = buildLaunchLink(config);
     try {
       await navigator.clipboard.writeText(link);
+      launchLog().debug('Launch link copied to the clipboard');
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
+    } catch (err) {
+      launchLog().warn('Copying the launch link failed', asError(err));
       setNotice('Copy failed - select the link below and copy it by hand.');
     }
   };
@@ -382,6 +581,8 @@ const LaunchSection = ({ year }) => {
   // ---- render -------------------------------------------------------------
 
   const title = `Glastonbury ${year} sale-day launcher`;
+  // A lock held by the launch window counts only while that window is still open.
+  const wakeLockHeld = wakeLockState === 'held' || (launchWindowLock === 'held' && launchWindowOpen);
   const clockSource = sync
     ? (sync.source === 'ntp' ? `NTP via ${sync.server}` : 'the server’s own clock (NTP unavailable!)')
     : '';
@@ -543,7 +744,28 @@ const LaunchSection = ({ year }) => {
                 )}
                 <ul>
                   <li>Keep this window and the launch window <strong>on screen</strong> - not minimised, not behind another window.</li>
-                  <li>Laptop on mains power; don&rsquo;t let it sleep (a screen wake lock has been requested{navigator.wakeLock ? '' : ', but this browser doesn’t support it'}).</li>
+                  <li>Laptop on mains power; don&rsquo;t let it sleep.</li>
+                  {wakeLockHeld && (
+                    <li>
+                      Screen wake lock is on (held by {wakeLockState === 'held' ? 'this tab' : 'the launch window'}),
+                      so the screen should stay awake.
+                    </li>
+                  )}
+                  {!wakeLockHeld && wakeLockState === 'unsupported' && (
+                    <li className="launch-error">
+                      <strong>This browser has no screen wake lock.</strong> Change the power settings so the screen
+                      doesn&rsquo;t sleep, or keep touching it.
+                    </li>
+                  )}
+                  {!wakeLockHeld && (wakeLockState === 'refused' || wakeLockState === 'released') && (
+                    <li className="launch-error">
+                      <strong>The screen wake lock is not active.</strong> The browser refused it or took it back - often
+                      battery saver or low-power mode, or the tab being hidden. Whichever of this tab and the launch
+                      window is in front will try again each time it is visible or you tap it. Until it says it is on,
+                      change the power settings so the screen doesn&rsquo;t sleep.
+                    </li>
+                  )}
+                  {!wakeLockHeld && wakeLockState === 'idle' && <li>Asking for a screen wake lock&hellip;</li>}
                   <li>Don&rsquo;t reload this tab - that disarms it.</li>
                 </ul>
               </div>

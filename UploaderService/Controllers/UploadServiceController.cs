@@ -1,9 +1,10 @@
-using System.Security.Cryptography;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Autofills.Common;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Autofills.UploaderService.Controllers;
@@ -13,11 +14,12 @@ namespace Autofills.UploaderService.Controllers;
 /// own sheets - every sheet is a sale except "Starting Lineup" and "URL"), get back
 /// the AutoFill-Options-format autofill file for it.
 ///
-/// Two ways in, both password-gated:
-///   1. POST /sheets    - file + password -> the sale sheets in this workbook
-///      POST /generate  - file + password + the exact sheet name chosen -> the file,
+/// Two ways in, both requiring a signed-in user (a Keycloak bearer token - see
+/// the auth note below):
+///   1. POST /sheets    - file -> the sale sheets in this workbook
+///      POST /generate  - file + the exact sheet name chosen -> the file,
 ///                        streamed straight back to the browser. Nothing touches disk.
-///   2. POST /ingest    - file + password -> EVERY sale sheet in the workbook is
+///   2. POST /ingest    - file -> EVERY sale sheet in the workbook is
 ///                        generated and written into the AutofillStore, replacing
 ///                        whatever was there for that sale (and an EMPTIED sale
 ///                        sheet removes the file that was there). This is what the
@@ -28,24 +30,39 @@ namespace Autofills.UploaderService.Controllers;
 ///                        running_order.json, which is where the page gets the
 ///                        festival year and the running-order list.
 ///
-/// And two ways out, deliberately NOT password-gated (they're what the AutoFill
-/// Options extension's Remote Import URL and the page's download button hit, and
-/// the old static files under /buswankers/ were public too):
+/// And the read routes, also requiring a signed-in user:
 ///   GET /files             - what's in the store (filename, size, last modified),
 ///                            so the page can mark sales with no file as empty
 ///   GET /files/{filename}  - the file itself
+///   GET /files/{filename}/groups - the groups behind a file (bookmarklet data)
 ///   GET /running-order     - the roster from the last ingest (year + people), or 404
 ///
-/// Sits behind a shared password (see IsPasswordCorrect) - simple, deliberate gate
-/// against a stranger stumbling on the URL, not a real auth system. It's enforced
-/// here server-side (not just hidden in the frontend JS), so it's at least a real
-/// gate rather than pure obscurity - but there's no per-user accounts, no rate
-/// limiting, and the password lives in plain text in appsettings.json. Fine for a
-/// personal tool with a small, trusted group of users; don't treat it as more than
-/// that.
+/// Auth (2026-09-29, replacing the old shared UploadPassword): the whole
+/// controller carries a class-level [Authorize], so every route needs a valid
+/// Keycloak access token from the BusWankers AppDomain's realm - the page gets one
+/// by signing in on first load (see ReactApp/src/main.jsx) and its fetch
+/// interceptor attaches it to every request. ServiceFactory's JwtBearer pipeline
+/// does the checking, server-side, so it's a real gate and not just a hidden form
+/// field. Reading needs only "is this a valid signed-in user" (a single shared
+/// Keycloak identity was enough for that); updating needs group membership too -
+/// see the next paragraph. Reads were made protected too (2026-09-29): the files
+/// hold names and registration numbers.
+///
+/// Who may UPDATE the files (2026-09-29): the three routes that take an uploaded
+/// workbook - POST /ingest (the one that writes the store), /sheets and
+/// /generate - carry [Authorize(Policy = "Uploaders")], so beyond a valid token
+/// the caller must be in the Keycloak group "uploaders" (see
+/// UploaderAuthorization.cs). Anyone else who is signed in gets 403. The reads
+/// stay open to every signed-in user. The page hides the Update Files tab from
+/// non-members, but this is the real check.
+///
+/// Consequence of protecting the reads: anything that can't send a token - the AutoFill Options
+/// extension's Remote Import URL, the bookmarklets' live groups fetch - now gets
+/// 401 (the bookmarklets fall back to their baked-in data).
 /// </summary>
 [ApiController]
 [Route("api/autofill")]
+[Authorize]
 public class UploadServiceController : ControllerBase
 {
     private readonly IConfiguration _config;
@@ -59,18 +76,21 @@ public class UploadServiceController : ControllerBase
         // Built here rather than DI-registered: Program.cs bootstraps through
         // IFGlobal's ServiceFactory, and the store is cheap (it's a directory
         // path and a regex), so there's nothing to gain from a singleton.
-        _store = new AutofillStore(config);
+        _store = new AutofillStore(config, log);
     }
 
     [HttpPost("sheets")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Sheets([FromForm] IFormFile? file, [FromForm] string? password)
+    public async Task<IActionResult> Sheets([FromForm] IFormFile? file)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        ControllerLog.SheetsRequested(_log, CallerName(), file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.SheetsRejected(_log, file?.FileName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         try
         {
@@ -78,35 +98,46 @@ public class UploadServiceController : ControllerBase
             var sheets = ExcelFileHelper.ListSaleSheets(stream, file.FileName);
 
             if (sheets.Count == 0)
+            {
+                ControllerLog.SheetsRejected(_log, file.FileName, "no sale sheets found");
                 return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
+            }
 
+            ControllerLog.SheetsListed(_log, file.FileName, sheets.Count, string.Join(", ", sheets));
             return Ok(new { sheets });
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.SheetsRejected(_log, file.FileName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.SheetsFailed(_log, ex, file.FileName);
             return StatusCode(500, new { error = "Failed to read the spreadsheet: " + ex.Message });
         }
     }
 
     [HttpPost("generate")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> Generate(
         [FromForm] IFormFile? file,
-        [FromForm] string? sheetName,
-        [FromForm] string? password)
+        [FromForm] string? sheetName)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        ControllerLog.GenerateRequested(_log, CallerName(), file?.FileName, sheetName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.GenerateRejected(_log, file?.FileName, sheetName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         if (string.IsNullOrWhiteSpace(sheetName))
+        {
+            ControllerLog.GenerateRejected(_log, file.FileName, sheetName, "no sheet name given");
             return BadRequest(new { error = "sheetName is required - call /sheets first to get the list for this file." });
+        }
 
         var maxInAGroup = MaxInAGroupFor(sheetName);
 
@@ -127,6 +158,7 @@ public class UploadServiceController : ControllerBase
             // /generate directly to notice something's worth checking.
             Response.Headers["X-Lead-Booker-Warning-Count"] = warnings.Count.ToString();
 
+            ControllerLog.Generated(_log, file.FileName, sheetName.Trim(), groups.Count, warnings.Count, bytes.Length, downloadName);
 
             return File(bytes, "text/csv", downloadName);
         }
@@ -135,10 +167,12 @@ public class UploadServiceController : ControllerBase
             // Anything ReadSheetGroups/SheetRegistrationReader threw deliberately -
             // no matching sheet, no header row, a group over the size limit. These
             // messages are written to be shown directly to the person uploading.
+            ControllerLog.GenerateRejected(_log, file.FileName, sheetName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.GenerateFailed(_log, ex, file.FileName, sheetName);
             return StatusCode(500, new { error = "Failed to process the spreadsheet: " + ex.Message });
         }
     }
@@ -152,14 +186,21 @@ public class UploadServiceController : ControllerBase
     /// frontend's handling simple). A workbook where nothing ingests is a 400.
     /// </summary>
     [HttpPost("ingest")]
+    [Authorize(Policy = UploaderAuthorization.PolicyName)]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Ingest([FromForm] IFormFile? file, [FromForm] string? password, CancellationToken ct)
+    public async Task<IActionResult> Ingest([FromForm] IFormFile? file, CancellationToken ct)
     {
-        if (!IsPasswordCorrect(password))
-            return Unauthorized(new { error = "Incorrect password." });
+        // Who ingested what is worth having in the log: an ingest replaces the
+        // live files every bookmarklet and extension reads from.
+        var caller = CallerName();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        ControllerLog.IngestRequested(_log, caller, file?.FileName, file?.Length);
 
         if (file == null || file.Length == 0)
+        {
+            ControllerLog.IngestRejected(_log, caller, file?.FileName, "no file or an empty file");
             return BadRequest(new { error = "Upload a spreadsheet (.xls or .xlsx)." });
+        }
 
         // The workbook is read once per sheet (ListSaleSheets, then ReadSheetGroups
         // for each), so buffer the bytes once. Each read gets its OWN MemoryStream
@@ -174,6 +215,8 @@ public class UploadServiceController : ControllerBase
             workbookBytes = buffer.ToArray();
         }
 
+        ControllerLog.IngestBuffered(_log, file.FileName, workbookBytes.Length);
+
         List<string> sheets;
         try
         {
@@ -182,21 +225,29 @@ public class UploadServiceController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.IngestRejected(_log, caller, file.FileName, ex.Message);
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
+            ControllerLog.IngestListFailed(_log, ex, file.FileName);
             return StatusCode(500, new { error = "Failed to read the spreadsheet: " + ex.Message });
         }
 
         if (sheets.Count == 0)
+        {
+            ControllerLog.IngestRejected(_log, caller, file.FileName, "no sale sheets found");
             return BadRequest(new { error = "No sale sheets found in this file - a sale sheet has 'Group', 'Reg Number' and 'Postcode' headings in row 1." });
+        }
+
+        ControllerLog.IngestSheetsFound(_log, file.FileName, sheets.Count, string.Join(", ", sheets));
 
         var results = new List<IngestResult>(sheets.Count);
         foreach (var sheetName in sheets)
         {
             var filename = DownloadNameFor(sheetName);
             var maxInAGroup = MaxInAGroupFor(sheetName);
+            ControllerLog.IngestSheetStarting(_log, file.FileName, sheetName.Trim(), filename, maxInAGroup);
             try
             {
                 using var sheetStream = new MemoryStream(workbookBytes, writable: false);
@@ -219,8 +270,7 @@ public class UploadServiceController : ControllerBase
                 var groupsJson = JsonSerializer.SerializeToUtf8Bytes(ToGroupsDocument(groups, saleFolderLabel), JsonOptions);
                 await _store.SaveGroupsAsync(filename, groupsJson, ct);
 
-                _log.LogInformation("Ingested sheet '{Sheet}' -> {File} ({Groups} groups, {Bytes} bytes) from {Upload}",
-                    sheetName, stored.Filename, groups.Count, stored.Size, file.FileName);
+                ControllerLog.IngestSheetOk(_log, sheetName.Trim(), stored.Filename, groups.Count, stored.Size, warnings.Count, file.FileName);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Ok, groups.Count, null, Warnings: warnings));
             }
             catch (EmptySheetException ex)
@@ -239,15 +289,13 @@ public class UploadServiceController : ControllerBase
                 }
                 catch (Exception delEx)
                 {
-                    _log.LogError(delEx, "Clearing {File} for emptied sheet '{Sheet}' failed", filename, sheetName);
+                    ControllerLog.IngestClearFailed(_log, delEx, sheetName.Trim(), filename);
                     results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0,
                         "The sheet is empty but the existing file could not be removed: " + delEx.Message));
                     continue;
                 }
 
-                if (cleared)
-                    _log.LogInformation("Sheet '{Sheet}' is empty - removed {File} from the store (from {Upload})",
-                        sheetName, filename, file.FileName);
+                ControllerLog.IngestSheetEmpty(_log, sheetName.Trim(), filename, cleared, file.FileName);
 
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Empty, 0, ex.Message, cleared));
             }
@@ -255,21 +303,32 @@ public class UploadServiceController : ControllerBase
             {
                 // Deliberate, user-facing message from the reader - report it against
                 // this sheet and carry on with the next.
+                ControllerLog.IngestSheetRejected(_log, sheetName.Trim(), filename, ex.Message);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, ex.Message));
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Ingest of sheet '{Sheet}' from {Upload} failed", sheetName, file.FileName);
+                ControllerLog.IngestSheetFailed(_log, ex, sheetName.Trim(), filename, file.FileName);
                 results.Add(new IngestResult(sheetName.Trim(), filename, IngestStatus.Failed, 0, "Failed to process this sheet: " + ex.Message));
             }
         }
 
         var runningOrder = await IngestRosterAsync(workbookBytes, file.FileName, ct);
 
+        var okCount = results.Count(r => r.Status == IngestStatus.Ok);
+        var emptyCount = results.Count(r => r.Status == IngestStatus.Empty);
+        var failedCount = results.Count(r => r.Status == IngestStatus.Failed);
+        timer.Stop();
+        ControllerLog.IngestFinished(_log, caller, file.FileName, results.Count, okCount, emptyCount, failedCount,
+            runningOrder.Status.ToString(), timer.ElapsedMilliseconds);
+
         // 400 only when nothing was ingested AND something actually failed; a
         // workbook whose sale tabs are all still empty is a successful no-op.
-        if (results.All(r => r.Status != IngestStatus.Ok) && results.Any(r => r.Status == IngestStatus.Failed))
+        if (okCount == 0 && failedCount > 0)
+        {
+            ControllerLog.IngestNothingIngested(_log, caller, file.FileName, failedCount);
             return BadRequest(new { error = "No sheet could be ingested.", results, runningOrder });
+        }
 
         return Ok(new { results, runningOrder });
     }
@@ -300,29 +359,31 @@ public class UploadServiceController : ControllerBase
             }
             catch (Exception delEx)
             {
-                _log.LogError(delEx, "Clearing the running order for an emptied roster sheet failed (from {Upload})", uploadName);
+                ControllerLog.RosterClearFailed(_log, delEx, uploadName);
                 return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false,
                     "The roster sheet is empty but the stored running order could not be removed: " + delEx.Message);
             }
 
-            if (cleared)
-                _log.LogInformation("Roster sheet is empty - removed {File} from the store (from {Upload})",
-                    AutofillStore.RunningOrderFileName, uploadName);
+            ControllerLog.RosterEmpty(_log, AutofillStore.RunningOrderFileName, cleared, uploadName);
 
             return new RunningOrderResult(IngestStatus.Empty, null, null, 0, cleared, ex.Message);
         }
         catch (InvalidOperationException ex)
         {
+            ControllerLog.RosterRejected(_log, uploadName, ex.Message);
             return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, ex.Message);
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Reading the roster sheet from {Upload} failed", uploadName);
+            ControllerLog.RosterReadFailed(_log, ex, uploadName);
             return new RunningOrderResult(IngestStatus.Failed, null, null, 0, false, "Failed to read the roster sheet: " + ex.Message);
         }
 
         if (roster == null)
+        {
+            ControllerLog.RosterSkipped(_log, uploadName);
             return new RunningOrderResult(IngestStatus.Skipped, null, null, 0, false, "No 'Glasto nnnn' roster sheet in this workbook - the stored running order is unchanged.");
+        }
 
         try
         {
@@ -335,14 +396,13 @@ public class UploadServiceController : ControllerBase
             var json = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
             await _store.SaveRunningOrderAsync(json, ct);
 
-            _log.LogInformation("Ingested roster sheet '{Sheet}' -> {File} (year {Year}, {People} people) from {Upload}",
-                roster.SheetName, AutofillStore.RunningOrderFileName, roster.Year, roster.Entries.Count, uploadName);
+            ControllerLog.RosterIngested(_log, roster.SheetName, AutofillStore.RunningOrderFileName, roster.Year, roster.Entries.Count, uploadName);
 
             return new RunningOrderResult(IngestStatus.Ok, roster.Year, roster.SheetName, roster.Entries.Count, false, null);
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Saving the running order from {Upload} failed", uploadName);
+            ControllerLog.RosterSaveFailed(_log, ex, uploadName);
             return new RunningOrderResult(IngestStatus.Failed, roster.Year, roster.SheetName, 0, false, "Failed to save the running order: " + ex.Message);
         }
     }
@@ -358,6 +418,7 @@ public class UploadServiceController : ControllerBase
     public IActionResult RunningOrder()
     {
         var path = _store.RunningOrderPath;
+        ControllerLog.RunningOrderRequested(_log, path != null);
         if (path == null)
             return NotFound(new { error = "No roster sheet has been ingested yet." });
 
@@ -371,11 +432,13 @@ public class UploadServiceController : ControllerBase
     {
         try
         {
-            return Ok(new { files = _store.List() });
+            var files = _store.List();
+            ControllerLog.FilesListed(_log, _store.Directory, files.Count, string.Join(", ", files.Select(f => f.Filename)));
+            return Ok(new { files });
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Listing the autofill store at {Dir} failed", _store.Directory);
+            ControllerLog.FilesListFailed(_log, ex, _store.Directory);
             return StatusCode(500, new { error = "Failed to list the autofill files: " + ex.Message });
         }
     }
@@ -390,14 +453,33 @@ public class UploadServiceController : ControllerBase
     [HttpGet("files/{filename}")]
     public IActionResult Download(string filename)
     {
+        ControllerLog.DownloadRequested(_log, filename);
+
         if (!AutofillStore.IsSafeFileName(filename))
+        {
+            ControllerLog.DownloadRefused(_log, filename);
             return BadRequest(new { error = "Not a valid autofill filename." });
+        }
 
         var path = _store.PathOf(filename);
         if (path == null)
+        {
+            ControllerLog.DownloadNotFound(_log, filename);
             return NotFound(new { error = $"No autofill file '{filename}' has been ingested yet." });
+        }
 
         Response.Headers.CacheControl = "no-cache";
+
+        // The content hash of what's about to be served, so the page can record
+        // the exact version a person downloaded (see downloadStoredFile in
+        // ReactApp/src/api/autofillApi.js). Absent, not an error, if it can't
+        // be worked out - the page then falls back to the listing's values.
+        var hash = _store.HashOfStored(filename);
+        if (!string.IsNullOrEmpty(hash))
+            Response.Headers["X-Autofill-Hash"] = hash;
+
+        ControllerLog.DownloadServed(_log, filename, hash ?? string.Empty);
+
         return PhysicalFile(path, "text/csv", filename);
     }
 
@@ -420,14 +502,23 @@ public class UploadServiceController : ControllerBase
     [HttpGet("files/{filename}/groups")]
     public IActionResult DownloadGroups(string filename)
     {
+        ControllerLog.GroupsRequested(_log, filename);
+
         if (!AutofillStore.IsSafeFileName(filename))
+        {
+            ControllerLog.GroupsRefused(_log, filename);
             return BadRequest(new { error = "Not a valid autofill filename." });
+        }
 
         var path = _store.PathOfGroups(filename);
         if (path == null)
+        {
+            ControllerLog.GroupsNotFound(_log, filename);
             return NotFound(new { error = $"No group data for '{filename}' has been ingested yet." });
+        }
 
         Response.Headers.CacheControl = "no-cache";
+        ControllerLog.GroupsServed(_log, filename);
         return PhysicalFile(path, "application/json");
     }
 
@@ -501,22 +592,18 @@ public class UploadServiceController : ControllerBase
         return SaleFolderLabels.TryGetValue(trimmed, out var known) ? known : trimmed;
     }
 
-    private bool IsPasswordCorrect(string? supplied)
-    {
-        var expected = _config["UploadPassword"];
-        if (string.IsNullOrEmpty(expected))
-            return false; // fail closed if the server isn't configured with a password
-
-        var suppliedBytes = Encoding.UTF8.GetBytes(supplied ?? string.Empty);
-        var expectedBytes = Encoding.UTF8.GetBytes(expected);
-
-        // Fixed-time compare so response timing can't be used to guess the password
-        // character by character. Lengths differing is itself timing-safe to check.
-        if (suppliedBytes.Length != expectedBytes.Length)
-            return false;
-
-        return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
-    }
+    /// <summary>
+    /// A log-friendly name for whoever the bearer token says is calling: the
+    /// Keycloak preferred_username, falling back to the standard name claim, then
+    /// the subject id, then "unknown". For logging only - authorisation has
+    /// already been decided by [Authorize] before any action runs.
+    /// </summary>
+    private string CallerName() =>
+        User.FindFirstValue("preferred_username")
+        ?? User.Identity?.Name
+        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? User.FindFirstValue("sub")
+        ?? "unknown";
 
     /// <summary>
     /// Per-sheet outcome of POST /ingest. Serialised as the strings "Ok" / "Empty" /
@@ -561,7 +648,16 @@ public class UploadServiceController : ControllerBase
     /// </summary>
     public sealed record GroupsDocument(List<GroupData> Groups);
 
-    public sealed record GroupData(string Code, string Label, string Name, List<MemberData> Members);
+    /// <summary>
+    /// One group in the groups sidecar / GET /files/{filename}/groups. Departure
+    /// (2026-09-29) is the group's departure point from the sheet's "Depart"
+    /// column - one value for the whole group (see RegistrationGroup) - and is
+    /// "" when the sale has none. It's display-only: the page shows it on the
+    /// group, the autofill CSV and the bookmarklet's fill don't use it (the
+    /// registration form has no such field - coach travel is chosen after the
+    /// ticket purchase).
+    /// </summary>
+    public sealed record GroupData(string Code, string Label, string Name, List<MemberData> Members, string Departure = "");
 
     public sealed record MemberData(string RegistrationId, string PostCode);
 
@@ -573,7 +669,7 @@ public class UploadServiceController : ControllerBase
         {
             var g = groups[i];
             var members = g.Members.Select(m => new MemberData(m.RegistrationId, m.PostCode)).ToList();
-            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"{namePrefix}Group-{g.GroupLabel}", members));
+            data.Add(new GroupData($"c{i + 1}", g.GroupLabel, $"{namePrefix}Group-{g.GroupLabel}", members, g.Departure));
         }
         return new GroupsDocument(data);
     }

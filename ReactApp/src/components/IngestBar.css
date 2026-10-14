@@ -44,10 +44,6 @@
   min-width: 0;
 }
 
-.ingest-bar .ingest-password {
-  flex: 0 1 180px;
-}
-
 .ingest-bar .ingest-button {
   background-color: #0066cc;
   color: white;

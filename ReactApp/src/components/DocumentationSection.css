@@ -343,7 +343,16 @@
   padding: 10px 14px;
 }
 
-.doc-section .doc-standalone-note ul {
+/* The "Copy bookmark" + "Try it" pair inside that notice (installed app only). */
+.doc-section .doc-copy-bookmark {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-section .doc-standalone-note ul,
+.doc-section .doc-standalone-note ol {
   margin: 6px 0 10px;
   padding-left: 22px;
 }

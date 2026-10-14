@@ -1,7 +1,8 @@
-import React from 'react';
-import { TABS, useActiveTab } from '../tabs';
+import React, { useEffect, useRef } from 'react';
+import { useActiveTab, useVisibleTabs } from '../tabs';
 import { WHATSAPP_GROUP_URL } from '../links';
 import InstallPrompt from './InstallPrompt';
+import LogoutButton from './LogoutButton';
 import './Navigation.css';
 
 // The tab bar. Each entry is a real link to the tab's hash (#documentation,
@@ -11,11 +12,26 @@ import './Navigation.css';
 // shortcut sits at the far end, and only when a link is configured.
 const Navigation = () => {
   const [activeTab, selectTab] = useActiveTab();
+  // Update Files is only in the list for members of the "uploaders" group.
+  const tabs = useVisibleTabs();
+  const menuRef = useRef(null);
 
   const onTabClick = (e, id) => {
     e.preventDefault();
     selectTab(id);
   };
+
+  // On tablets and phones the tabs are one horizontally scrolling row, so keep
+  // the active tab centred in it (including when a tab is switched by an
+  // in-page link or the URL hash). This scrolls the strip itself rather than
+  // using scrollIntoView, which would also drag the page up to the nav bar.
+  useEffect(() => {
+    const menu = menuRef.current;
+    const active = menu && menu.querySelector('.nav-link-active');
+    const item = active && active.parentElement;
+    if (!menu || !item) return;
+    menu.scrollLeft = Math.max(0, item.offsetLeft - (menu.clientWidth - item.offsetWidth) / 2);
+  }, [activeTab]);
 
   return (
     <>
@@ -26,8 +42,8 @@ const Navigation = () => {
             <img src={`${process.env.PUBLIC_URL}/nav-logo.png`} alt="" className="nav-logo-image" />
             Bus Wankers
           </a>
-          <ul className="nav-menu" role="tablist">
-            {TABS.map((tab) => {
+          <ul className="nav-menu" role="tablist" ref={menuRef}>
+            {tabs.map((tab) => {
               const active = tab.id === activeTab;
               return (
                 <li key={tab.id} className="nav-item" role="presentation">
@@ -57,6 +73,9 @@ const Navigation = () => {
                 </a>
               </li>
             )}
+            <li className="nav-item nav-item-logout" role="presentation">
+              <LogoutButton />
+            </li>
           </ul>
         </div>
       </nav>

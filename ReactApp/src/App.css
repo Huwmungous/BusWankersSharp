@@ -1,3 +1,42 @@
+/* Base + responsive layer for the whole app.
+
+   This file is imported last (see App.jsx), so at equal specificity the
+   overrides below win over the per-component stylesheets. That lets the
+   phone/tablet fixes live in one place instead of being scattered through
+   every section's CSS.
+
+   Breakpoints used across the app:
+     phone   <= 600px  (single column, scrolling tab strip)
+     tablet  <= 1024px (stacked header, wide tables scroll sideways)
+     desktop  > 1024px (unchanged)
+*/
+
+html {
+  /* Stop iOS inflating text after a rotation to landscape. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* The browser default 8px margin left a white frame round the dark nav bar. */
+  margin: 0;
+  min-width: 320px;
+  font-family: Arial, Helvetica, sans-serif;
+  /* Keep content clear of notches / rounded corners when the installed app
+     runs full-screen (needs viewport-fit=cover in index.html). Ignored
+     wherever env() is unsupported. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Screenshots and the tutorial video must never be wider than the screen. */
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
 .App {
   text-align: center;
 }
@@ -34,5 +73,73 @@
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ---- Text inputs: 16px minimum ------------------------------------------
+   iOS Safari zooms the whole page when a field under 16px is focused, and
+   does not zoom back out, which is miserable in an installed app. */
+.ingest-bar .ingest-input,
+.launch .launch-field input {
+  font-size: 16px;
+}
+
+/* ---- Launcher cards -------------------------------------------------------
+   minmax(300px, 1fr) forced a 300px column, wider than the space left on a
+   320px-wide phone once the page padding is taken off. */
+.launch .launch-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+}
+
+/* ---- Tablet and below ----------------------------------------------------
+   The wide tables (running order, group members, test read-out) scroll
+   sideways inside their own box instead of stretching the whole page. */
+@media (max-width: 1024px) {
+  .running-order-table,
+  .bw-members,
+  .groups-members,
+  .test-readout-table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ---- Phone ----------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* TestSection dropped its inputs to 14px here, which triggers the iOS zoom. */
+  .test-section .form-input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Section padding + card margin + card padding left ~230px on a 320px phone. */
+  .test-section {
+    padding: 10px;
+  }
+
+  .test-section .container {
+    margin: 0;
+    padding: 15px;
+  }
+}
+
+/* ---- Touch screens: comfortable tap targets (44px) ------------------------- */
+@media (pointer: coarse) {
+  .ingest-bar .ingest-button,
+  .launch .launch-btn:not(.launch-btn-link),
+  .bw-try,
+  .bw-details-toggle,
+  .groups-copy-all,
+  .doc-section .download-button,
+  .doc-section .folder-download-button,
+  .test-section .submit-button {
+    min-height: 44px;
+  }
+
+  .bw-copy {
+    min-height: 36px;
   }
 }

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Autofills.UploaderService;
@@ -43,11 +45,37 @@ public sealed class AutofillStore
         new("^(?:[a-z0-9]+(?:_[a-z0-9]+)*_)?autofill\\.csv$", RegexOptions.Compiled);
 
     private readonly string _directory;
+    private readonly ILogger _log;
 
-    public AutofillStore(IConfiguration config)
+    /// <summary>
+    /// Content hashes already worked out, keyed by full path and valid only
+    /// while the file's length and write time are unchanged - GET /files is
+    /// hit on every page load, and re-hashing an unchanged file each time
+    /// would be wasted work. An entry that no longer matches is simply
+    /// recomputed and replaced; a deleted file's entry is harmless (never
+    /// read again, replaced if a file of that name returns). Declared as an
+    /// instance field initialiser, so it exists before the constructor runs.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, (long Length, long WriteTicks, string Hash)> _hashCache = new();
+
+    /// <summary>
+    /// The logger is optional (a store built without one logs nothing) and is
+    /// assigned before anything else can use it. No log line is written here:
+    /// the controller builds a store per request, so a constructor log would
+    /// repeat on every call - Program.cs logs the resolved directory once at
+    /// start-up instead (see <see cref="ResolveDirectory"/>).
+    /// </summary>
+    public AutofillStore(IConfiguration config, ILogger? log = null)
+    {
+        _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        _directory = ResolveDirectory(config);
+    }
+
+    /// <summary>The directory the store uses for the given configuration (the default if none is set).</summary>
+    public static string ResolveDirectory(IConfiguration config)
     {
         var configured = config[ConfigKey];
-        _directory = string.IsNullOrWhiteSpace(configured)
+        return string.IsNullOrWhiteSpace(configured)
             ? DefaultDirectory
             : Path.GetFullPath(configured);
     }
@@ -65,7 +93,10 @@ public sealed class AutofillStore
     public IReadOnlyList<StoredAutofillFile> List()
     {
         if (!System.IO.Directory.Exists(_directory))
+        {
+            StoreLog.DirectoryMissing(_log, _directory);
             return Array.Empty<StoredAutofillFile>();
+        }
 
         return new DirectoryInfo(_directory)
             .EnumerateFiles("*.csv", SearchOption.TopDirectoryOnly)
@@ -86,6 +117,17 @@ public sealed class AutofillStore
     }
 
     /// <summary>
+    /// The content hash of a stored file (see HashOf), or null if it isn't
+    /// there or isn't a safe name. Sent as X-Autofill-Hash on the download so
+    /// the page can record exactly which version a person took.
+    /// </summary>
+    public string? HashOfStored(string? fileName)
+    {
+        var path = PathOf(fileName);
+        return path == null ? null : HashOf(new FileInfo(path));
+    }
+
+    /// <summary>
     /// Writes (or replaces) one autofill file. Written to a temp name first and
     /// then moved into place, so a download that lands mid-write never sees a
     /// half-written file.
@@ -93,7 +135,10 @@ public sealed class AutofillStore
     public async Task<StoredAutofillFile> SaveAsync(string fileName, byte[] content, CancellationToken ct = default)
     {
         if (!IsSafeFileName(fileName))
+        {
+            StoreLog.UnsafeFileName(_log, fileName);
             throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
+        }
 
         var finalPath = await WriteAtomicAsync(fileName, content, ct);
         return ToStored(new FileInfo(finalPath));
@@ -107,13 +152,20 @@ public sealed class AutofillStore
     public bool Delete(string fileName)
     {
         if (!IsSafeFileName(fileName))
+        {
+            StoreLog.UnsafeFileName(_log, fileName);
             throw new ArgumentException($"'{fileName}' is not a valid autofill filename.", nameof(fileName));
+        }
 
         var path = Path.Combine(_directory, fileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, fileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, fileName);
         return true;
     }
 
@@ -135,11 +187,35 @@ public sealed class AutofillStore
     {
         var path = Path.Combine(_directory, RunningOrderFileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, RunningOrderFileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, RunningOrderFileName);
         return true;
     }
+
+    /// <summary>
+    /// The registration pool and who holds each pair (see RegistrationPoolStore) -
+    /// one more non-csv file in the store, so List() never offers it as an
+    /// autofill file, and it lives outside the deploy path like everything else here.
+    /// </summary>
+    public const string RegistrationPoolFileName = "registration_pool.json";
+
+    /// <summary>Full path of registration_pool.json, or null if no pool has been loaded.</summary>
+    public string? RegistrationPoolPath
+    {
+        get
+        {
+            var path = Path.Combine(_directory, RegistrationPoolFileName);
+            return File.Exists(path) ? path : null;
+        }
+    }
+
+    public Task SaveRegistrationPoolAsync(byte[] json, CancellationToken ct = default) =>
+        WriteAtomicAsync(RegistrationPoolFileName, json, ct);
 
     /// <summary>
     /// The suffix for a sale's structured-groups sidecar, alongside its autofill
@@ -169,36 +245,100 @@ public sealed class AutofillStore
     public Task SaveGroupsAsync(string autofillFileName, byte[] json, CancellationToken ct = default)
     {
         if (!IsSafeFileName(autofillFileName))
+        {
+            StoreLog.UnsafeFileName(_log, autofillFileName);
             throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+        }
 
         return WriteAtomicAsync(GroupsFileNameFor(autofillFileName), json, ct);
+    }
+
+    /// <summary>
+    /// Every registration number in any stored sale's groups sidecar - the people
+    /// already in a group from earlier ingests, which the Registrations pool must
+    /// leave out. A sidecar that can't be read is skipped (and logged), not fatal:
+    /// the workbook being loaded is checked on its own as well.
+    /// </summary>
+    public async Task<HashSet<string>> ReadStoredGroupRegNumbersAsync(CancellationToken ct = default)
+    {
+        var regs = new HashSet<string>(StringComparer.Ordinal);
+        if (!System.IO.Directory.Exists(_directory))
+            return regs;
+
+        foreach (var path in System.IO.Directory.EnumerateFiles(_directory, "*" + GroupsFileSuffix, SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
+                if (!doc.RootElement.TryGetProperty("groups", out var groups) || groups.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    continue;
+
+                foreach (var group in groups.EnumerateArray())
+                {
+                    if (!group.TryGetProperty("members", out var members) || members.ValueKind != System.Text.Json.JsonValueKind.Array)
+                        continue;
+
+                    foreach (var member in members.EnumerateArray())
+                    {
+                        if (member.TryGetProperty("registrationId", out var id) && id.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var reg = id.GetString()?.Trim();
+                            if (!string.IsNullOrEmpty(reg))
+                                regs.Add(reg);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                StoreLog.GroupsUnreadable(_log, ex, Path.GetFileName(path));
+            }
+        }
+
+        return regs;
     }
 
     /// <summary>Removes a sale's groups sidecar (an emptied sale sheet clears it, same as its CSV). True if there was one.</summary>
     public bool DeleteGroups(string autofillFileName)
     {
         if (!IsSafeFileName(autofillFileName))
+        {
+            StoreLog.UnsafeFileName(_log, autofillFileName);
             throw new ArgumentException($"'{autofillFileName}' is not a valid autofill filename.", nameof(autofillFileName));
+        }
 
-        var path = Path.Combine(_directory, GroupsFileNameFor(autofillFileName));
+        var groupsFileName = GroupsFileNameFor(autofillFileName);
+        var path = Path.Combine(_directory, groupsFileName);
         if (!File.Exists(path))
+        {
+            StoreLog.FileNotThere(_log, groupsFileName);
             return false;
+        }
 
         File.Delete(path);
+        StoreLog.FileRemoved(_log, groupsFileName);
         return true;
     }
 
     private async Task<string> WriteAtomicAsync(string fileName, byte[] content, CancellationToken ct)
     {
-        System.IO.Directory.CreateDirectory(_directory);
+        StoreLog.WriteStarting(_log, fileName, content.Length);
 
         var finalPath = Path.Combine(_directory, fileName);
         var tempPath = Path.Combine(_directory, $".{fileName}.{Guid.NewGuid():N}.tmp");
 
         try
         {
+            System.IO.Directory.CreateDirectory(_directory);
             await File.WriteAllBytesAsync(tempPath, content, ct);
             File.Move(tempPath, finalPath, overwrite: true);
+            StoreLog.WriteCompleted(_log, fileName, content.Length);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            StoreLog.WriteFailed(_log, ex, fileName, _directory);
+            throw;
         }
         finally
         {
@@ -209,9 +349,47 @@ public sealed class AutofillStore
         return finalPath;
     }
 
-    private static StoredAutofillFile ToStored(FileInfo f) =>
-        new(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero));
+    private StoredAutofillFile ToStored(FileInfo f) =>
+        new(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero), HashOf(f));
+
+    /// <summary>
+    /// A short, stable fingerprint of a file's CONTENT (first 16 hex characters
+    /// of its SHA-256). This - not LastModified - is what the page compares to
+    /// decide whether the copy someone last took is out of date: an ingest of
+    /// an unchanged spreadsheet rewrites every file (new LastModified, same
+    /// bytes), and that must not raise a false "update available". Falls back
+    /// to an empty string if the file can't be read (vanished mid-listing, say),
+    /// which the frontend treats as "no hash - compare LastModified instead".
+    /// </summary>
+    private string HashOf(FileInfo f)
+    {
+        var writeTicks = f.LastWriteTimeUtc.Ticks;
+        if (_hashCache.TryGetValue(f.FullName, out var cached) && cached.Length == f.Length && cached.WriteTicks == writeTicks)
+            return cached.Hash;
+
+        try
+        {
+            using var stream = new FileStream(f.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()[..16];
+            _hashCache[f.FullName] = (f.Length, writeTicks, hash);
+            StoreLog.HashComputed(_log, f.Name, hash);
+            return hash;
+        }
+        catch (IOException ex)
+        {
+            StoreLog.HashFailed(_log, ex, f.Name);
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            StoreLog.HashFailed(_log, ex, f.Name);
+            return string.Empty;
+        }
+    }
 }
 
-/// <summary>One file in the store, as reported by GET /api/autofill/files.</summary>
-public sealed record StoredAutofillFile(string Filename, long Size, DateTimeOffset LastModified);
+/// <summary>
+/// One file in the store, as reported by GET /api/autofill/files. Hash is a
+/// short content fingerprint (see AutofillStore.HashOf) - empty if unavailable.
+/// </summary>
+public sealed record StoredAutofillFile(string Filename, long Size, DateTimeOffset LastModified, string Hash = "");

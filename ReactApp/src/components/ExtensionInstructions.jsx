@@ -55,7 +55,20 @@ const ExtensionInstructions = ({ info, isEmpty, remoteImportUrl, downloadStatus,
       {isEmpty ? (
         <span className="link-disabled" title="Nothing has been ingested for this sale yet">this link</span>
       ) : (
-        <a href={downloadUrlFor(info.filename)} download={info.filename}>this link</a>
+        <a
+          href={downloadUrlFor(info.filename)}
+          download={info.filename}
+          onClick={(e) => {
+            // Go through the page's own download (same as the button above)
+            // so the version taken is recorded for the out-of-date banner. The
+            // href stays for middle-click / copy-link, which the banner
+            // can't see - those people can use "I've imported the current file".
+            e.preventDefault();
+            onDownload();
+          }}
+        >
+          this link
+        </a>
       )}
       {' '}to download the {info.label.toLowerCase()} autofill file and save it, you then click on the Import button under Import/Export, and browse to where you&rsquo;ve saved the file
       {isEmpty && ' (not available until a spreadsheet has been ingested for this sale)'}

@@ -6,16 +6,78 @@
 // holly's nginx to the UploaderService backend running on intelligence. See
 // ops/nginx/buswankers-api.inc. Fixed from the domain root rather than built off
 // PUBLIC_URL, since this API isn't served under /buswankers/ itself.
+import { getLog, asError } from '../log';
 import { parseAutofillCsv } from '../bookmarklet';
 
 export const API_BASE = '/buswankers-api/api/autofill';
+
+// Authentication (2026-09-29): the page signs in through Keycloak before it
+// renders (see src/main.jsx), and the fetch interceptor AppInitializer installs
+// attaches the access token to every fetch() below - nothing here handles a
+// token itself. Every route on the server needs it (the read routes were
+// protected too on 2026-09-29), so a 401 here means the session has expired.
+
+// Created on demand rather than at module load (see ../log.js): the logger is
+// only configured once AppInitializer has finished. Every call is made from a
+// component or handler that runs after that, so this is always safe - a
+// module-level logger would not be. Attributes go in as context fields
+// (searchable in the log viewer) rather than being spliced into the message.
+const apiLog = (attributes) => getLog('autofillApi', attributes);
+
+// Times a request and logs it either way: the route and method going out, then
+// the status and elapsed time coming back, or the network failure. One place so
+// no call in this file can go unlogged. Resolves to the Response exactly as
+// fetch() would; rethrows a network failure after logging it. Exported so the
+// registrations client (registrationsApi.js) logs its requests the same way.
+export async function loggedFetch(route, url, init) {
+  const method = (init && init.method) || 'GET';
+  const startedAt = performance.now();
+  apiLog({ route, method }).debug('Request starting');
+  try {
+    const response = await fetch(url, init);
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    const attributes = { route, method, status: response.status, elapsedMs };
+    if (response.ok) {
+      apiLog(attributes).debug('Request completed');
+    } else if (response.status === 401 || response.status === 403 || response.status === 404) {
+      // Expected states (expired session, not an uploader, nothing ingested yet)
+      // - worth seeing, not worth an alarm.
+      apiLog(attributes).info('Request answered with a refusal or not-found');
+    } else {
+      apiLog(attributes).warn('Request failed');
+    }
+    return response;
+  } catch (err) {
+    apiLog({ route, method, elapsedMs: Math.round(performance.now() - startedAt) })
+      .error('Request could not reach the server', asError(err));
+    throw err;
+  }
+}
+
+// Shown when the server turns a request away for want of a valid sign-in.
+// Exported so the components can recognise it if they ever need to.
+export const SESSION_EXPIRED_MESSAGE =
+  'Your sign-in has expired - reload the page to sign in again.';
+export const NOT_ALLOWED_MESSAGE = "Your account isn't allowed to do that.";
+// What a 403 from the ingest route means: signed in, but not in the Keycloak
+// group "uploaders" (the page hides the Update Files tab from such people, so
+// seeing this means the group changed since they signed in, or a stale tab).
+export const UPLOADERS_ONLY_MESSAGE =
+  "Only members of the 'uploaders' group can update the autofill files. If you should be one, sign out and back in so your access refreshes.";
 
 // UploaderService always answers with a JSON { error } body, so a non-JSON
 // error response didn't come from it - it came from holly's nginx (or
 // whatever sits in front), most often because /buswankers-api/ isn't being
 // proxied. Say so: "Request failed (404)" on its own sent a real
 // investigation down the wrong path once.
+//
+// The exception is a 401/403: the token check happens before the service's
+// own code runs, so those come back with an empty body - which would
+// otherwise be mistaken for the "not being proxied" case above.
 export async function readErrorMessage(response, fallback) {
+  if (response.status === 401) return SESSION_EXPIRED_MESSAGE;
+  if (response.status === 403) return NOT_ALLOWED_MESSAGE;
+
   try {
     const body = await response.json();
     if (body && body.error) return body.error;
@@ -30,11 +92,14 @@ export async function readErrorMessage(response, fallback) {
   return fallback;
 }
 
-// GET /files -> Map of filename -> { filename, size, lastModified } for every
-// autofill file currently in the store. A sale whose filename isn't in the map
-// is "empty" (nothing ingested for it yet).
+// GET /files -> Map of filename -> { filename, size, lastModified, hash } for
+// every autofill file currently in the store. hash is a short fingerprint of
+// the file's content (see AutofillStore.HashOf) - what the out-of-date check
+// compares, since lastModified moves on every ingest even when nothing
+// changed; '' when the server couldn't work one out. A sale whose filename
+// isn't in the map is "empty" (nothing ingested for it yet).
 export async function fetchStoredFiles() {
-  const response = await fetch(`${API_BASE}/files`, { cache: 'no-store' });
+  const response = await loggedFetch('files', `${API_BASE}/files`, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
@@ -43,6 +108,7 @@ export async function fetchStoredFiles() {
   for (const f of body.files || []) {
     map.set(f.filename, f);
   }
+  apiLog({ files: map.size }).debug('File listing parsed');
   return map;
 }
 
@@ -64,17 +130,29 @@ function normaliseRunningOrderResult(r) {
 
 // POST /ingest -> { results, runningOrder }. `results` is the per-sale-sheet
 // list; `runningOrder` is the roster outcome (see normaliseRunningOrderResult).
-// Throws with the server's message on a non-2xx (wrong password, unreadable
-// workbook, nothing ingested at all); when the server included per-sheet
-// results with that error (it does for "no sheet could be ingested"), they're
-// attached to the thrown Error as `results` so the page can show WHICH sheets
-// failed and why, rather than just a status code.
-export async function ingestWorkbook(file, password) {
+// Throws with the server's message on a non-2xx (signed-out or expired session,
+// unreadable workbook, nothing ingested at all); when the server included
+// per-sheet results with that error (it does for "no sheet could be ingested"),
+// they're attached to the thrown Error as `results` so the page can show WHICH
+// sheets failed and why, rather than just a status code.
+//
+// No password any more: the caller is identified by the Keycloak access token
+// the fetch interceptor attaches to this request. Don't set a Content-Type
+// header here - the browser must add the multipart boundary itself.
+export async function ingestWorkbook(file) {
+  apiLog({ fileName: file && file.name, fileBytes: file && file.size }).info('Ingest requested');
+
   const form = new FormData();
   form.append('file', file);
-  form.append('password', password);
 
-  const response = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: form });
+  const response = await loggedFetch('ingest', `${API_BASE}/ingest`, { method: 'POST', body: form });
+  if (response.status === 403) {
+    // Authorisation, not a problem with the workbook: no per-sheet results to show.
+    apiLog({ status: response.status, group: 'uploaders' }).warn('Ingest refused - not in the uploaders group');
+    const denied = new Error(UPLOADERS_ONLY_MESSAGE);
+    denied.results = [];
+    throw denied;
+  }
   if (!response.ok) {
     let results = [];
     let message = `Request failed (${response.status}).`;
@@ -84,21 +162,29 @@ export async function ingestWorkbook(file, password) {
         const body = await response.json();
         if (body && body.error) message = body.error;
         if (body && Array.isArray(body.results)) results = body.results.map(normaliseIngestResult);
-      } catch {
-        // fall through with the generic message
+      } catch (parseErr) {
+        apiLog({ status: response.status }).debug('Ingest error body was not readable JSON', asError(parseErr));
       }
     } else {
       message = await readErrorMessage(response, message);
     }
+    apiLog({ status: response.status, sheetResults: results.length, reason: message }).warn('Ingest rejected by the server');
     const err = new Error(message);
     err.results = results;
     throw err;
   }
   const body = await response.json();
-  return {
+  const normalised = {
     results: (body.results || []).map(normaliseIngestResult),
     runningOrder: normaliseRunningOrderResult(body.runningOrder),
   };
+  apiLog({
+    sheets: normalised.results.length,
+    ok: normalised.results.filter((r) => r.status === 'ok').length,
+    failed: normalised.results.filter((r) => r.status === 'failed').length,
+    rosterStatus: normalised.runningOrder ? normalised.runningOrder.status : 'none',
+  }).info('Ingest response parsed');
+  return normalised;
 }
 
 // GET /running-order -> { year, sheet, generatedAt, entries: [{ regNumber,
@@ -107,31 +193,78 @@ export async function ingestWorkbook(file, password) {
 // for that, which is a normal state rather than an error). postCode is ''
 // when the roster sheet has no 'Postcode' column (2026-09-18).
 export async function fetchRunningOrder() {
-  const response = await fetch(`${API_BASE}/running-order`, { cache: 'no-store' });
+  const response = await loggedFetch('running-order', `${API_BASE}/running-order`, { cache: 'no-store' });
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
   const body = await response.json();
-  if (!body || typeof body.year !== 'number') return null;
-  return { ...body, entries: Array.isArray(body.entries) ? body.entries : [] };
+  if (!body || typeof body.year !== 'number') {
+    apiLog().warn('Running order response had no usable year - treating as not ingested');
+    return null;
+  }
+  const entries = Array.isArray(body.entries) ? body.entries : [];
+  apiLog({ year: body.year, people: entries.length }).debug('Running order parsed');
+  return { ...body, entries };
+}
+
+// Departure point per group (2026-09-29), read from the groups sidecar that
+// the bookmarklet also uses (GET /files/{filename}/groups) rather than the
+// autofill CSV - the CSV is the extension's import file and has no field for
+// it (the registration form doesn't either; coach travel is chosen after the
+// purchase). Resolves to { byLabel, byCode } Maps of lower-cased group label /
+// profile code -> departure text, or two empty Maps if the sidecar is missing
+// (a sale ingested before this existed, until it is re-ingested), unreachable
+// or malformed. Best-effort by design: no departure is a smaller loss than
+// the groups themselves failing to load, so nothing here ever throws.
+async function fetchGroupDepartures(filename) {
+  const byLabel = new Map();
+  const byCode = new Map();
+  try {
+    const response = await loggedFetch('files/groups', `${API_BASE}/files/${encodeURIComponent(filename)}/groups`, { cache: 'no-store' });
+    if (!response.ok) {
+      apiLog({ fileName: filename, status: response.status }).debug('Groups sidecar not available - no departures');
+      return { byLabel, byCode };
+    }
+    const body = await response.json();
+    for (const g of (body && Array.isArray(body.groups) ? body.groups : [])) {
+      const departure = typeof g.departure === 'string' ? g.departure.trim() : '';
+      if (!departure) continue;
+      if (g.label) byLabel.set(String(g.label).toLowerCase(), departure);
+      if (g.code) byCode.set(String(g.code).toLowerCase(), departure);
+    }
+    apiLog({ fileName: filename, withDeparture: byLabel.size }).debug('Group departures loaded');
+  } catch (err) {
+    apiLog({ fileName: filename }).warn('Group departures could not be loaded', asError(err));
+  }
+  return { byLabel, byCode };
 }
 
 // Fetch a stored autofill file and parse it into its groups (see
 // src/bookmarklet.js) - what the Documentation tab builds the per-group
 // bookmarklets and copy/paste tables from. Same public route the Download
-// button uses; null if the file isn't in the store.
+// button uses; null if the file isn't in the store. Each group also carries
+// `departure` ('' when it has none - see fetchGroupDepartures).
 export async function fetchAutofillGroups(filename) {
-  const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
+  const response = await loggedFetch('files/{file}', downloadUrlFor(filename), { cache: 'no-store' });
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed (${response.status}).`));
   }
   const text = await response.text();
-  return parseAutofillCsv(text);
+  const groups = parseAutofillCsv(text);
+  apiLog({ fileName: filename, bytes: text.length, groups: groups.length }).debug('Autofill file parsed into groups');
+
+  const { byLabel, byCode } = await fetchGroupDepartures(filename);
+  return groups.map((g) => ({
+    ...g,
+    departure: byLabel.get(String(g.label).toLowerCase()) || byCode.get(String(g.code).toLowerCase()) || '',
+  }));
 }
 
-// Public download URL for a stored autofill file (no password needed).
+// Download URL for a stored autofill file. The server now requires a token for
+// it, so only calls that go through the page's fetch (which attaches one) work;
+// pasting it into the AutoFill Options extension's Remote Import URL gets 401.
 export function downloadUrlFor(filename) {
   return `${API_BASE}/files/${encodeURIComponent(filename)}`;
 }
@@ -153,13 +286,22 @@ export function groupsUrlFor(filename) {
 // Fetch a stored file and hand it to the browser as a download, rather than
 // relying on <a download> (which is ignored for cross-path navigations in
 // some browsers and gives no error feedback on a 404).
+//
+// Resolves to { hash }: the content hash of the bytes that were actually
+// served, from the X-Autofill-Hash response header ('' if the server didn't
+// send one). The caller records THIS as the version taken - not the hash from
+// the earlier file listing - so a file re-ingested between the listing and
+// the click is recorded as what was really downloaded.
 export async function downloadStoredFile(filename) {
-  const response = await fetch(downloadUrlFor(filename), { cache: 'no-store' });
+  const response = await loggedFetch('files/{file}', downloadUrlFor(filename), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Download failed (${response.status}).`));
   }
+  const hash = response.headers.get('X-Autofill-Hash') || '';
   const blob = await response.blob();
+  apiLog({ fileName: filename, bytes: blob.size, hash }).info('Stored file downloaded');
   saveBlob(blob, filename);
+  return { hash };
 }
 
 export function saveBlob(blob, filename) {

@@ -13,29 +13,69 @@
 // Nothing here is React-specific; LaunchSection calls syncClock() and then
 // uses correctedNow(sync) wherever it needs "the real time now".
 
+import { authService } from '@if/web-common';
+import { getLog, asError } from '../log';
+
 export const TIME_URL = '/buswankers-api/api/time';
+
+// Created when used, never at module load (see ../log.js). Timing note: nothing
+// logs between a sample's t0 and t3 (the timed hop), nor on the fire path in
+// scheduleAt - a log call there would be latency the arithmetic or the launch
+// itself would pay for. Logging happens before t0, after t3, or off the hot path.
+const clockLog = (attributes) => getLog('launchClock', attributes);
+
+// The browser's own fetch, captured when this module loads - which is before
+// AppInitializer (src/main.jsx) replaces window.fetch with a version that looks
+// up the access token and attaches it to each call. /api/time now needs a token
+// like every other route, but that lookup would happen BETWEEN the moment `t0`
+// is taken below and the request actually leaving the browser: an asymmetric
+// delay, which the offset arithmetic reads as clock error. So sampleOnce fetches
+// the token itself BEFORE t0 and sends it through this un-intercepted fetch.
+// Declared here, above sampleOnce, and only ever read inside it.
+const nativeFetch =
+  typeof window !== 'undefined' && typeof window.fetch === 'function'
+    ? window.fetch.bind(window)
+    : null;
 
 // One exchange with /api/time. Returns { offsetMs, rttMs, source, server,
 // serverOffsetMs } or throws with a message the page can show.
 export async function sampleOnce() {
+  // Token first, so its (possibly refreshing) lookup is outside the timed hop.
+  let token = null;
+  try {
+    token = await authService.getAccessToken();
+  } catch (err) {
+    clockLog().warn('Could not get an access token for the time service', asError(err));
+  }
+  if (!token) {
+    clockLog().warn('No access token - the time service cannot be called');
+    throw new Error('Not signed in - reload the page to sign in again.');
+  }
   const t0 = Date.now();
   let response;
   try {
-    response = await fetch(`${TIME_URL}?_=${t0}`, { cache: 'no-store' });
+    // Falls back to whatever fetch is current if there was no window at load.
+    response = await (nativeFetch || fetch)(`${TIME_URL}?_=${t0}`, {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
+    });
   } catch (err) {
+    clockLog().warn('Time service request failed at the network', asError(err));
     throw new Error(`Could not reach the time service (${err.message || 'network error'}).`);
   }
   const t3 = Date.now();
   if (!response.ok) {
+    clockLog({ status: response.status }).warn('Time service answered with an error status');
     throw new Error(`Time service answered ${response.status}.`);
   }
   const body = await response.json();
   const t1 = Number(body.receivedMs);
   const t2 = Number(body.sentMs);
   if (!Number.isFinite(t1) || !Number.isFinite(t2)) {
+    clockLog().warn('Time service reply was missing its receive/send times');
     throw new Error('Time service reply was not understood.');
   }
-  return {
+  const sample = {
     offsetMs: ((t1 - t0) + (t2 - t3)) / 2,
     rttMs: (t3 - t0) - (t2 - t1),
     source: body.source || 'unknown',
@@ -43,6 +83,9 @@ export async function sampleOnce() {
     serverOffsetMs: Number.isFinite(Number(body.offsetMs)) ? Number(body.offsetMs) : null,
     error: body.error || null,
   };
+  clockLog({ offsetMs: sample.offsetMs, rttMs: sample.rttMs, source: sample.source, server: sample.server })
+    .debug('Time sample taken');
+  return sample;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +95,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // where syncedAt is the LOCAL Date.now() at completion and spreadMs is the
 // range of offsets seen across samples (a rough confidence figure to show).
 export async function syncClock(count = 8, gapMs = 120) {
+  clockLog({ count, gapMs }).debug('Clock sync starting');
   const samples = [];
   let lastError = null;
   for (let i = 0; i < count; i++) {
@@ -59,15 +103,17 @@ export async function syncClock(count = 8, gapMs = 120) {
       samples.push(await sampleOnce());
     } catch (err) {
       lastError = err;
+      clockLog({ attempt: i + 1, count }).debug('Time sample failed', asError(err));
     }
     if (i < count - 1) await sleep(gapMs);
   }
   if (samples.length === 0) {
+    clockLog({ count }).error('Clock sync failed - no time samples succeeded', asError(lastError || new Error('No time samples succeeded')));
     throw lastError || new Error('No time samples succeeded.');
   }
   const best = samples.reduce((a, b) => (b.rttMs < a.rttMs ? b : a));
   const offsets = samples.map((s) => s.offsetMs);
-  return {
+  const result = {
     offsetMs: best.offsetMs,
     rttMs: best.rttMs,
     source: best.source,
@@ -78,6 +124,16 @@ export async function syncClock(count = 8, gapMs = 120) {
     spreadMs: Math.max(...offsets) - Math.min(...offsets),
     syncedAt: Date.now(),
   };
+  clockLog({
+    samples: result.samples,
+    requested: count,
+    offsetMs: result.offsetMs,
+    rttMs: result.rttMs,
+    spreadMs: result.spreadMs,
+    source: result.source,
+    server: result.server,
+  }).info('Clock sync complete');
+  return result;
 }
 
 // The corrected time now, in ms since the epoch; falls back to the local clock
@@ -101,6 +157,7 @@ export function scheduleAt(targetMs, getNow, onFire, { leadMs = 0, onTick } = {}
   let timer = null;
   let worker = null;
   const fireAt = targetMs - leadMs;
+  clockLog({ targetMs, leadMs, fireAt, remainingMs: fireAt - getNow() }).debug('Launch timer scheduled');
 
   const fire = (via) => {
     if (fired) return;
@@ -138,7 +195,7 @@ export function scheduleAt(targetMs, getNow, onFire, { leadMs = 0, onTick } = {}
     worker.postMessage(5);
   } catch (err) {
     // No workers (very old browser, or a blob: CSP) - the main thread is enough.
-    console.debug('[launch] worker ticker unavailable:', err && err.message);
+    clockLog().warn('Worker ticker unavailable - the main-thread timer alone will fire the launch', asError(err));
     worker = null;
   }
 

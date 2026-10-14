@@ -19,8 +19,9 @@ loses an upload result or a half-filled test form. **Documentation is the landin
 tab.** The nav bar also carries a **WhatsApp** shortcut to the group when
 `WHATSAPP_GROUP_URL` in `src/links.js` is set (it's hidden while that's empty).
 
-1. **Update Files** (`IngestBar`) - choose a registration workbook, enter the shared
-   password, click *Upload & Ingest*. Every sale sheet in the workbook is generated
+1. **Update Files** (`IngestBar`) - choose a registration workbook and click
+   *Upload & Ingest* (there is no password box any more - you are already signed
+   in; see "Signing in" below). Every sale sheet in the workbook is generated
    and written into the live autofill files in one go (a sale sheet that has been
    **emptied** removes its file - the spreadsheet is the source of truth); the
    roster sheet is read into the running order; per-sheet outcomes are shown and
@@ -339,7 +340,7 @@ that to intelligence:5038 - `ops/nginx/buswankers-api.inc`):
 | Endpoint                     | Auth     | Used by                                            |
 |------------------------------|----------|----------------------------------------------------|
 | `POST /ingest`               | password | upload bar - every sale sheet -> the store          |
-| `GET  /files`                | none     | dropdown - which files exist, size, last modified  |
+| `GET  /files`                | none     | dropdown - which files exist, size, last modified, content hash |
 | `GET  /files/{filename}`     | none     | Download button, "this link", Remote Import        |
 | `GET  /running-order`        | none     | running order list + festival year (404 until ingested) |
 | `POST /sheets`, `POST /generate` | password | (no longer used by the page - kept for scripting) |
@@ -358,6 +359,61 @@ Two ways a user gets a file, both served by `GET /files/{filename}`:
 The store starts empty after a fresh install: every sale shows `(empty)` until a
 workbook has been ingested. To seed it by hand, drop a file with one of the names
 above into the store directory on intelligence (owned by `BusWankersServices`).
+
+### Knowing whether an imported file is out of date (2026-09-29)
+
+The extension holds its own copy of the file once imported, and a page cannot read
+or write another extension's storage - so the page can't *update* it, only tell
+people when it needs updating. On the extension route of the Documentation tab a
+banner under the sale dropdown does that:
+
+- `GET /files` now also returns `hash` for each file: the first 16 hex characters of
+  the SHA-256 of its content (`AutofillStore.HashOf`, cached per path while length
+  and write time are unchanged). The **hash**, not `lastModified`, decides staleness -
+  re-ingesting an unchanged spreadsheet rewrites every file and moves `lastModified`
+  without changing a byte, and that must not raise a false alarm.
+- `GET /files/{filename}` sends the same hash as `X-Autofill-Hash`, so the page
+  records what it *actually downloaded* even if a re-ingest lands between listing and
+  click.
+- The page remembers, per browser (`localStorage` key `bw-imported-versions`, see
+  `src/importedVersions.js`), the version of each sale's file it last took: recorded
+  when the person downloads through the Download button or "this link", or clicks
+  **I've imported the current file** (the only way to cover Remote Import, where the
+  extension fetches the URL itself and the page never sees it).
+- States (`updateStateFor`): `empty` (nothing shown), `never` (blue - no record of an
+  import), `current` (green tick), `stale` (amber - file changed since it was taken,
+  with Download, the confirm button and the Remote Import address).
+- It re-checks the server when the dropdown changes and when the tab or installed app
+  comes back into view (`visibilitychange`) - event-driven, no polling. Unchanged
+  listings keep their object identity (`mergeStoredFiles` in `BusWankersPage`) so a
+  re-check that finds nothing new doesn't reload the groups.
+- Limits: the record is per browser, so importing on another device shows `never`
+  there until confirmed; and the bookmark and copy & paste routes always read live
+  data, so they show no banner.
+
+### Group departure point (2026-09-29)
+
+The Coach sheet has a **Depart** column (also accepted: `Departs`, `Departure`,
+`Departure Point`, `Departure Location`; case-insensitive; optional - the General
+sheets have none). It is repeated on every member's row but belongs to the
+**group**, so it is resolved once per group, never per person:
+
+- `SheetRegistrationReader.ResolveDeparture` takes the group's non-blank values
+  (case-insensitive). If they agree, that's the group's `Departure`. If they
+  disagree the most common wins (ties: first listed) and the ingest reports an
+  amber warning naming every value, so the sheet can be fixed - the upload still
+  succeeds, same policy as the Lead Booker warnings. No values at all is simply "no
+  departure yet" with no warning.
+- It is carried in the groups sidecar (`GET /files/{filename}/groups`, field
+  `departure`) and shown on each group's heading ("Departs from ..."), on the Groups
+  tab and in the Documentation tab's group panel. It is display-only: the autofill CSV
+  (the extension's import file) and the bookmarklet's fill don't use it, because the
+  registration form has no such field - coach travel is chosen after the ticket
+  purchase.
+- The page reads it best-effort (`fetchGroupDepartures`): a missing or unreachable
+  sidecar means no departure shown, never a failed group load.
+- **A sale ingested before this existed has no departures until its spreadsheet is
+  uploaded again** - the value only exists on the spreadsheet.
 
 ## Getting Started
 
@@ -412,11 +468,19 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
 - `src/components/DocumentationSection.jsx` / `.css` - Documentation: sale
   dropdown, key dates, the three-way method chooser (extension/bookmark/copy
   & paste, each with a short Pros/Cons list - extension is the default and
-  leftmost), the bookmarklet steps, the collapsed extension instructions, and
+  leftmost), the bookmarklet steps (in the installed app, which has no bookmarks
+  bar to drag onto, a **Copy bookmark** button plus steps for pasting it into a
+  new bookmark in the browser, with "open in browser and drag it" as the
+  alternative), the collapsed extension instructions, and
   the copy & paste method's link to the Groups tab. `SALE_INFO` at the top of
   the file is the single place that defines each sale's label, heading,
   dates, cost and filename - a new sale sheet needs an entry here to appear
   in the dropdown (the backend handles any sheet name without a code change)
+- `src/components/AutofillUpdateNotice.jsx` / `.css` - The out-of-date banner under
+  the sale dropdown (extension route): current / stale / never-imported states
+- `src/importedVersions.js` (+ `.test.js`) - Per-browser record of which version of
+  each sale's file was last downloaded or confirmed imported, and `updateStateFor`,
+  the comparison behind the banner
 - `src/components/TestSection.jsx` / `.css` - Mockup of the registration form
 - `src/api/autofillApi.js` - Shared client for the autofill API (base path, error
   reading, `fetchStoredFiles`, `fetchRunningOrder`, `fetchAutofillGroups`,
@@ -434,6 +498,68 @@ above into the store directory on intelligence (owned by `BusWankersServices`).
   still load from `c.ststat.net`); the form posts nowhere - a capture-phase submit
   handler shows what the boxes hold instead. Linked from the Test Form tab and both
   sets of instructions.
+
+## Signing in (2026-09-29)
+
+The whole page is behind a Keycloak sign-in, replacing the old shared upload
+password. `src/main.jsx` wraps `<App />` in `AppInitializer` from
+`@if/web-common-react` - the same wrapper IFLogViewer uses - so on first load anyone
+who isn't signed in is sent to Keycloak and only sees the app once they come back
+with a token. Changing the files additionally needs membership of the `uploaders`
+group (see below).
+
+- **How it works:** `AppInitializer` fetches the sign-in settings (realm, client,
+  authority) for the `BusWankers` AppDomain from the config service at `/config`,
+  runs the OIDC flow (`/signin/callback`, `/signout/callback`, `/silent-callback`
+  under `/buswankers/`), and installs a `fetch` interceptor that attaches the access
+  token to every request the page makes. Nothing in `src/api/autofillApi.js` handles
+  a token itself.
+- **The API:** UploaderService requires that token on **every** route - the writes
+  (`POST /sheets`, `/generate`, `/ingest`) and the reads (`GET /files`,
+  `/files/{name}`, `/files/{name}/groups`, `/running-order`, `/time`) - and checks it
+  server-side. `src/launch/clock.js` fetches the token itself *before* starting its
+  timer and sends it on the browser's un-intercepted `fetch`, so the sale-day clock
+  sync isn't skewed by a token lookup.
+- **What no longer works:** anything that can't sign in now gets `401`. The AutoFill
+  Options extension's Remote Import URL (`/buswankers/<name>_autofill.csv`) can't be
+  used any more - import the downloaded file instead. The bookmarklets' live groups
+  fetch fails and they fall back to the data baked into them at build time.
+- **Keycloak side (not in this repo):** the `BusWankers` AppDomain needs a *user*
+  client in its realm - a public client using the authorization-code flow with PKCE -
+  whose valid redirect URIs include
+  `https://longmanrd.net/buswankers/signin/callback`, `.../signout/callback` and
+  `.../silent-callback` (plus the `http://localhost:3000/buswankers/...` equivalents
+  for `npm run dev`), whose web origins include `https://longmanrd.net`, and which the
+  config service returns for `type=user`. One shared user account is enough.
+- **Who may update the files (the `uploaders` group):** signing in is not enough to
+  change the autofill files. The Update Files tab, and the three write routes behind it
+  (`POST /sheets`, `/generate`, `/ingest`), are limited to members of the Keycloak group
+  `uploaders`. Everything else (documentation, groups, running order, test form, launch)
+  stays open to any signed-in user.
+  - *Backend:* `UploaderService/UploaderAuthorization.cs` registers an `Uploaders`
+    authorisation policy, applied with `[Authorize(Policy = ...)]` to those three actions
+    on top of the controller-wide `[Authorize]`. No token gets `401`; a signed-in user
+    outside the group gets `403`. The group name is `Auth:UploadersGroup` in
+    `appsettings.json` (default `uploaders`); membership is read from the `groups` (or
+    `kc_groups`) claim, with or without a leading `/`, case-sensitively, top-level groups
+    only. Denials are logged as warnings with the caller and the groups their token carried.
+  - *Frontend:* `src/auth/uploaders.js` reads the same claim from the ID token; `src/tabs.js`
+    hides the tab and ignores `#update-files` for anyone else. This is convenience only -
+    the backend is the real gate. A `403` from `/ingest` shows a plain explanation.
+  - *Keycloak side:* create the group `uploaders` in the realm and add the intended users.
+    The client also needs a **Group Membership** protocol mapper with token claim name
+    `groups`, added to the ID token and the access token (full group path on or off - both
+    work). Without the mapper nobody is recognised as an uploader. Group changes only reach
+    a user's token when they sign out and back in.
+  - *Shared identity:* the gate only means something once people sign in as themselves; a
+    single shared account is either in the group (everyone can upload) or not (nobody can).
+- **Local development:** `npm run dev` serves `http://localhost:3000/buswankers/` and
+  proxies `/config` and `/buswankers-api` to longmanrd.net. `.env` holds the build
+
+  values (`VITE_IF_APP_NAME`, `VITE_IF_ENVIRONMENT`, `VITE_LOG_LEVEL`,
+  `VITE_IF_CONFIG_SERVICE_URL`); `.env.development` overrides them for `dev`.
+  `npm run rebuild` rebuilds the linked Infoforum libraries first; `npm test` runs
+  the Vitest suite.
 
 ## Deployment
 
@@ -461,16 +587,21 @@ sudo ./ops/deploy/setup-holly-buswankers-links.sh   # run ON holly
 
 The frontend deploy mirrors `deploy-breaktackle-frontend.sh` (build here, rsync the
 build to a staging dir on holly, remote `sudo` sync into place with `www-data`
-ownership, reload nginx) but trimmed down - no shared `@if/web-common` libraries to
-rebuild, no per-environment `config.js` (the API path is fixed, same-origin). One
-difference worth remembering: this is **Create React App**, not Vite, so the build
-output is `build/`, not `dist/`.
+ownership, reload nginx) but trimmed down - no per-environment `config.js` (the API
+path is fixed, same-origin). Since 2026-09-29 it is a **Vite** app (it was Create
+React App) that shares the estate's `@if/web-common` / `@if/web-common-react`
+libraries with IFLogViewer, so the deploy also needs the Infoforum repo checked out
+beside this one (`$IF_REPO`, default `~/repos/Infoforum`) and rebuilds those
+libraries on every run (`npm run rebuild`). `vite.config.js` keeps the output in
+`build/` (CRA's directory) so the rsync is unchanged.
 
-`package.json`'s `"homepage": "/buswankers"` is what makes CRA emit correctly
--prefixed asset URLs (and is what `process.env.PUBLIC_URL` resolves from in the
-components) - keep it in sync if the public path ever changes. The
+`vite.config.js`'s `BASE` (`/buswankers/`, the old `"homepage"`) is what makes Vite
+emit correctly prefixed asset URLs, what `process.env.PUBLIC_URL` is defined from
+for the components that still use it, and what `src/main.jsx` builds the sign-in
+redirect URIs from - keep it in sync if the public path ever changes. The
 `try_files ... /buswankers/index.html` fallback in `buswankers.inc` only matters
-for a direct hit that isn't a static asset. NB holly's `longmanrd.conf` currently
+for a direct hit that isn't a static asset (the sign-in callback routes get their
+own explicit location in `buswankers-api.inc`). NB holly's `longmanrd.conf` currently
 declares `location /buswankers/` inline in the HTTPS server block, so the deploy
 script installs `buswankers.inc` but doesn't include it (nginx refuses a duplicate
 location); `buswankers-api.inc` - the API proxy plus the `*_autofill.csv` rewrite -

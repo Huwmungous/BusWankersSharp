@@ -1,15 +1,29 @@
 import React, { useMemo, useState } from 'react';
+import AutofillUpdateNotice from './AutofillUpdateNotice';
 import ExtensionInstructions from './ExtensionInstructions';
-import GroupFillPanel from './GroupFillPanel';
+import GroupFillPanel, { CopyButton } from './GroupFillPanel';
 import SaleBookmarklet from './SaleBookmarklet';
 import { downloadStoredFile, groupsUrlFor, saveBlob } from '../api/autofillApi';
-import { bookmarkFolderFileName, bookmarkFolderHtml, bookmarkFolderName, saleBookmarkletTitle } from '../bookmarklet';
+import {
+  bookmarkFolderFileName,
+  bookmarkFolderHtml,
+  bookmarkFolderName,
+  runSaleFillOnThisPage,
+  saleBookmarkletHref,
+  saleBookmarkletTitle,
+} from '../bookmarklet';
 import { DEFAULT_YEAR } from '../festival';
 import { SALE_INFO, formatWhen } from '../saleInfo';
 import { useAutofillGroups } from '../useAutofillGroups';
 import { useIsStandalone } from '../displayMode';
+import { updateStateFor, useImportedVersions } from '../importedVersions';
 import { buildNameLookup } from '../runningOrder';
+import { getLog, asError } from '../log';
 import './DocumentationSection.css';
+
+// Created when used, never at module load (see ../log.js). Declared above the
+// component and every handler that calls it.
+const docsLog = (attributes) => getLog('DocumentationSection', attributes);
 
 // The Documentation tab (the landing tab). Pick a sale, then choose HOW to
 // fill the registration form - three routes, all driven by the same
@@ -41,15 +55,27 @@ import './DocumentationSection.css';
 // installed app (useIsStandalone) there is no bookmarks bar and nothing to
 // drag onto, and the fill bookmark can only ever run from a browser tab on
 // the See Tickets page - so the Bookmark route swaps its drag instructions
-// for "open this page in your browser to set the bookmark up" steps (a
-// one-off: once the bookmark is on the bar it works whether or not the app
-// is installed), and the Copy & paste card says it works anywhere. Nothing
+// for a "Copy bookmark" button plus steps for pasting it into a new bookmark
+// in the browser (a page can't write to the bookmarks itself, so the paste is
+// the person's; "open this page in your browser and drag it" stays as the
+// alternative). A one-off: once the bookmark is saved it works whether or not
+// the app is installed. The Copy & paste card says it works anywhere. Nothing
 // else on the page cares which way it was opened.
 // The chosen method is remembered per browser (localStorage) so someone who
 // picked a different route lands on their own instructions next time.
 //
-// storedFiles: Map of filename -> { filename, size, lastModified } from the
-// backend's store (see BusWankersPage). A sale whose filename isn't in it has
+// Out-of-date check (2026-09-29): the extension route's real weakness is a
+// stale import, so on the extension route the page also remembers which
+// version of each sale's file this browser last downloaded (or was told was
+// imported - see ../importedVersions.js) and shows a banner under the
+// dropdown (AutofillUpdateNotice) when the server holds something newer. It
+// re-checks the server when the dropdown changes (onRecheckFiles), and the
+// page itself re-checks when the tab comes back into view (BusWankersPage).
+// It can't push the new file into the extension - that's a third-party
+// extension's private storage - so the fix is put one click away instead.
+//
+// storedFiles: Map of filename -> { filename, size, lastModified, hash } from
+// the backend's store (see BusWankersPage). A sale whose filename isn't in it has
 // nothing ingested yet - the dropdown says so, the groups panel explains, and
 // the download button is disabled. While the store is still loading (or
 // unreachable) nothing is known, so every sale is treated as empty rather
@@ -108,12 +134,14 @@ const DocumentationSection = ({
   saleType = 'Coach',
   onSaleTypeChange = () => {},
   runningOrder = null,
+  onRecheckFiles = () => {},
 }) => {
   const [method, setMethod] = useState(readSavedMethod); // extension | bookmark | copypaste
   const [downloadStatus, setDownloadStatus] = useState('idle'); // idle | working | error
   const [downloadError, setDownloadError] = useState('');
   const nameLookup = useMemo(() => buildNameLookup(runningOrder), [runningOrder]);
   const isStandalone = useIsStandalone(); // running as the installed app (no bookmarks bar)
+  const { taken, markTaken } = useImportedVersions(); // which file versions this browser last took
 
   const info = SALE_INFO[saleType];
   const {
@@ -125,6 +153,12 @@ const DocumentationSection = ({
   } = useAutofillGroups(info.filename, storedFiles, storeStatus, storeError);
   const remoteImportUrl = `https://longmanrd.net/buswankers/${info.filename}`;
 
+  // Is what this browser last took for the chosen sale still what the server
+  // holds? ('empty' | 'never' | 'current' | 'stale' - see importedVersions.js.)
+  // Derived, not stored, so it moves the instant the listing or the record
+  // does. `stored` is declared by the useAutofillGroups call above.
+  const updateState = updateStateFor(stored, taken[info.filename]);
+
   // This sale's live group-data URL (see groupsUrlFor in api/autofillApi.js
   // and DownloadGroups on the backend) - baked into every bookmarklet
   // generated below so each one can check for fresher data at click time
@@ -134,16 +168,36 @@ const DocumentationSection = ({
   const groupsUrl = groupsUrlFor(info.filename);
 
   const handleDownload = async () => {
-    if (isEmpty) return;
+    if (isEmpty) {
+      docsLog({ fileName: info.filename }).debug('Download ignored - nothing ingested for this sale');
+      return;
+    }
+    docsLog({ saleType, fileName: info.filename }).info('Download requested');
     setDownloadStatus('working');
     setDownloadError('');
     try {
-      await downloadStoredFile(info.filename);
+      const { hash } = await downloadStoredFile(info.filename);
+      // Record the version that was actually served (the header), falling
+      // back to the listing's own values if the server didn't send one. Then
+      // look again at the server, so a listing that was a moment behind the
+      // file just downloaded catches up and the banner settles on "current".
+      markTaken(info.filename, { ...stored, hash: hash || (stored && stored.hash) || '' });
+      onRecheckFiles();
       setDownloadStatus('idle');
     } catch (err) {
+      docsLog({ saleType, fileName: info.filename }).error('Download failed', asError(err));
       setDownloadStatus('error');
       setDownloadError(err.message || 'Download failed.');
     }
+  };
+
+  // "I've imported the current file" - for the Remote Import route (and for
+  // anyone who downloaded it another way), where the page never sees the
+  // transfer. Records the version the listing shows right now.
+  const handleMarkImported = () => {
+    if (isEmpty) return;
+    docsLog({ saleType, fileName: info.filename }).info('Marked as imported by the user');
+    markTaken(info.filename, stored);
   };
 
   // Every group's bookmark for this sale in one importable bookmarks file, as
@@ -153,14 +207,19 @@ const DocumentationSection = ({
   // name regardless of how many times the underlying spreadsheet changes.
   const folderName = bookmarkFolderName(info.folderLabel);
   const downloadBookmarkFolder = () => {
-    if (!groups || groups.length === 0) return;
+    if (!groups || groups.length === 0) {
+      docsLog({ saleType }).debug('Bookmark folder download ignored - no groups loaded');
+      return;
+    }
+    docsLog({ saleType, groups: groups.length }).info('Bookmark folder downloaded');
     const html = bookmarkFolderHtml(groups, folderName, year, groupsUrl, info.folderLabel);
     saveBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), bookmarkFolderFileName(info.folderLabel));
   };
 
   const chooseMethod = (m) => {
+    docsLog({ method: m, previous: method }).info('Fill method chosen');
     setMethod(m);
-    try { window.localStorage.setItem(METHOD_KEY, m); } catch { /* per-browser convenience only */ }
+    try { window.localStorage.setItem(METHOD_KEY, m); } catch (err) { docsLog().debug('Fill method could not be remembered', asError(err)); }
   };
 
   // "Try it on the Test Form" has just filled the (hidden) Test Form tab -
@@ -184,7 +243,15 @@ const DocumentationSection = ({
               id="saleType"
               className="form-input"
               value={saleType}
-              onChange={(e) => { onSaleTypeChange(e.target.value); setDownloadStatus('idle'); setDownloadError(''); }}
+              onChange={(e) => {
+                docsLog({ from: saleType, to: e.target.value }).info('Sale selected');
+                onSaleTypeChange(e.target.value);
+                setDownloadStatus('idle');
+                setDownloadError('');
+                // Check the server now, so the banner reflects the file as it
+                // is at the moment of choosing, not as it was at page load.
+                onRecheckFiles();
+              }}
             >
               {Object.entries(SALE_INFO).map(([key, tab]) => {
                 const f = storedFiles.get(tab.filename);
@@ -203,6 +270,18 @@ const DocumentationSection = ({
             {storeStatus === 'ready' && isEmpty && 'Nothing has been loaded for this sale yet - the organiser needs to upload the spreadsheet on the Update Files tab.'}
             {storeStatus === 'ready' && !isEmpty && `Groups last updated ${formatWhen(stored.lastModified)}`}
           </p>
+          {method === 'extension' && storeStatus === 'ready' && (
+            <AutofillUpdateNotice
+              info={info}
+              file={stored}
+              updateState={updateState}
+              remoteImportUrl={remoteImportUrl}
+              downloadStatus={downloadStatus}
+              downloadError={downloadError}
+              onDownload={handleDownload}
+              onMarkImported={handleMarkImported}
+            />
+          )}
         </div>
 
         <div className="key-dates">
@@ -282,11 +361,56 @@ const DocumentationSection = ({
               <div className="bw-note doc-standalone-note">
                 <p>
                   <strong>You&rsquo;re using the installed app, which has no bookmarks bar</strong> - so there&rsquo;s nothing
-                  here to drag the bookmark onto. The fill bookmark can only be set up from a normal browser tab, and on
-                  the day it only ever runs in the browser, on the See Tickets page. This is a one-off: once the bookmark is
-                  on your bar it works whether or not the app is installed.
+                  here to drag the bookmark onto. You can still get it into your browser: copy it here, then paste it into a
+                  new bookmark there. This is a one-off: once the bookmark is saved it works whether or not the app is
+                  installed, and on the day it only ever runs in the browser, on the See Tickets page.
                 </p>
-                <p>Open this page in your browser to set it up:</p>
+
+                {groups && groups.length > 0 ? (
+                  <>
+                    <p className="doc-copy-bookmark">
+                      <CopyButton
+                        text={saleBookmarkletHref(groups, groupsUrl, info.folderLabel)}
+                        label="Copy bookmark"
+                        copiedLabel="Bookmark copied"
+                        title={`Copy the ${info.label.toLowerCase()} bookmark to paste into a new bookmark in your browser`}
+                      />
+                      <button
+                        type="button"
+                        className="bw-try"
+                        onClick={() => {
+                          runSaleFillOnThisPage(groups, groupsUrl, info.folderLabel);
+                          showTestForm();
+                        }}
+                        title="Fill the Test Form tab with this bookmark, exactly as it would work on the day - picker included"
+                      >
+                        Try it on the Test Form
+                      </button>
+                    </p>
+                    <ol>
+                      <li>Click <strong>Copy bookmark</strong> above.</li>
+                      <li>
+                        In your browser, bookmark any page - <kbd>Ctrl</kbd>+<kbd>D</kbd> on Windows / Linux,{' '}
+                        <kbd>&#8984;</kbd>+<kbd>D</kbd> on a Mac, or the star / menu on a phone.
+                      </li>
+                      <li>
+                        Edit that bookmark (right-click it and choose <em>Edit</em>; on a phone, open your bookmarks and edit it
+                        from there). Change its name to <strong>{saleBookmarkletTitle(info.folderLabel, year)}</strong>, replace
+                        its address (the URL box) with what you copied, and save.
+                      </li>
+                    </ol>
+                    <p className="doc-fallback">
+                      Paste it into the bookmark&rsquo;s own address box - not the browser&rsquo;s address bar, which often
+                      removes the start of pasted code.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    {groupsStatus === 'loading' ? `Loading the ${info.label.toLowerCase()} groups\u2026` : 'Nothing has been loaded for this sale yet - the organiser needs to upload the spreadsheet on the Update Files tab.'}
+                  </p>
+                )}
+
+                <p>Prefer to drag it? Open this page in your browser to set it up:</p>
                 <ul>
                   <li><strong>Windows / Mac / Linux (Chrome or Edge):</strong> click the <kbd>&#8942;</kbd> menu at the top right of this
                     app window and choose <em>Open in browser</em> (Edge: <em>Open in Microsoft Edge</em>), then come back to this tab there.</li>
@@ -297,7 +421,7 @@ const DocumentationSection = ({
                     home-screen app.</li>
                 </ul>
                 <p>
-                  Or skip the bookmark altogether: the <a href="#groups">Groups tab</a> works fine in here - every registration
+                  If all else fails, the <a href="#groups">Groups tab</a> works fine in here - every registration
                   number and postcode has a Copy button.
                 </p>
               </div>

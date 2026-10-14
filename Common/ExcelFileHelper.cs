@@ -311,6 +311,31 @@ namespace Autofills.Common
             return RosterReader.Read(ds);
         }
 
+        /// <summary>
+        /// Opens the compiled workbook and reads the registration pool from its
+        /// "Unique Reg Numbers" tab via RegistrationPoolReader. Throws
+        /// InvalidOperationException (message safe to show the uploader) when
+        /// there is no such tab or nothing usable on it. Same stream caveat as
+        /// ListSaleSheets - the reader disposes the stream.
+        /// </summary>
+        public static PoolLoadResult ReadRegistrationPool(Stream excelStream, string fileName)
+        {
+            using var reader = OpenReader(excelStream, fileName);
+            var ds = ReadDataSet(reader);
+            var loaded = RegistrationPoolReader.Read(ds);
+
+            // Anyone in a group on one of the workbook's own sale sheets is booked
+            // through that group, so they are left out of the pool.
+            var inGroups = new HashSet<string>(StringComparer.Ordinal);
+            foreach (DataTable table in ds.Tables)
+            {
+                if (IsSaleSheet(table))
+                    inGroups.UnionWith(SheetRegistrationReader.ReadRegNumbers(table));
+            }
+
+            return RegistrationPoolReader.ExcludeGroupMembers(loaded, inGroups);
+        }
+
         private static IExcelDataReader OpenReader(Stream excelStream, string fileName)
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);

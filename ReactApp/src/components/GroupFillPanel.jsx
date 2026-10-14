@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bookmarkletHref, bookmarkletSource, bookmarkletTitle, groupDisplayLabel, runFillOnThisPage } from '../bookmarklet';
 import { nameForRegistration } from '../runningOrder';
+import { getLog, asError } from '../log';
 import './GroupFillPanel.css';
+
+// Created when used, never at module load (see ../log.js). Declared above
+// copyText and every component that logs.
+const panelLog = (attributes) => getLog('GroupFillPanel', attributes);
 
 // A javascript: href has to be set outside React's render path: React 18
 // warns on javascript: URLs in JSX and a future version will refuse them,
@@ -42,15 +47,23 @@ const BookmarkletLink = ({ group, year, groupsUrl, saleFolderLabel }) => {
 // fallback tab) can offer the same one-click clipboard behaviour without a
 // second implementation of it drifting out of step with this one.
 export const copyText = async (text) => {
+  // Length only is logged: what is copied is registration numbers and
+  // postcodes, which stay out of the log.
+  const chars = String(text).length;
   try {
     await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
+  } catch (err) {
+    panelLog({ chars }).warn('Copy to the clipboard failed', asError(err));
     return false;
   }
+  panelLog({ chars }).debug('Text copied to the clipboard');
+  return true;
 };
 
-export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => {
+// title: the tooltip. Defaults to showing the text being copied, which suits a
+// registration number or postcode but not a whole bookmark's worth of code -
+// pass something short for those.
+export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied', title }) => {
   const [state, setState] = useState('idle'); // idle | copied | failed
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -61,7 +74,7 @@ export const CopyButton = ({ text, label = 'Copy', copiedLabel = 'Copied' }) => 
     timer.current = setTimeout(() => setState('idle'), 2000);
   };
   return (
-    <button type="button" className={`bw-copy bw-copy-${state}`} onClick={onClick} title={`Copy "${text}"`}>
+    <button type="button" className={`bw-copy bw-copy-${state}`} onClick={onClick} title={title || `Copy "${text}"`}>
       {state === 'copied' ? copiedLabel : state === 'failed' ? 'Copy failed' : label}
     </button>
   );
@@ -82,6 +95,7 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl, saleFolderLabe
   const count = group.members.length;
 
   const tryOnTestForm = () => {
+    panelLog({ groupCode: group.code, members: count }).info('Try on the Test Form');
     runFillOnThisPage(group, groupsUrl, saleFolderLabel);
     if (onTried) onTried(group);
   };
@@ -92,6 +106,9 @@ const GroupCard = ({ group, year, onTried, nameLookup, groupsUrl, saleFolderLabe
         <div className="bw-group-title">
           <strong>{groupDisplayLabel(saleFolderLabel, group.label)}</strong>
           <span className="bw-group-count">{count} {count === 1 ? 'person' : 'people'}</span>
+          {group.departure && (
+            <span className="bw-group-departure">Departs from <strong>{group.departure}</strong></span>
+          )}
         </div>
         <div className="bw-group-actions">
           <BookmarkletLink group={group} year={year} groupsUrl={groupsUrl} saleFolderLabel={saleFolderLabel} />

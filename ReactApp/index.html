@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- App icon (2026-09-29): the orange VW camper artwork, rendered to a
+         multi-size favicon.ico plus PNGs for the PWA manifest (logo192/logo512,
+         with separate "maskable" variants on a cream plate) and the iOS
+         home-screen icon. All generated from the same source image; see the
+         README's "App icon" note. This gives the app itself (the browser tab,
+         the installed app) its icon - it does NOT reach the bookmarks bar: a
+         javascript: bookmarklet never gets a real favicon in Chrome regardless
+         of what icon the page it was dragged from has - see
+         https://issues.chromium.org/issues/40332768, a long-standing open
+         Chromium request for exactly this. Bookmarklet entries keep Chrome's
+         generic bookmark icon; there is no supported way from the page side to
+         change that.
+
+         Asset URLs below are root-relative ("/favicon.ico"): Vite prefixes them
+         with the configured base (/buswankers/), which replaces CRA's
+         %PUBLIC_URL% placeholder. -->
+
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <!-- viewport-fit=cover lets the installed app use the whole screen on
+         notched phones; App.css keeps content clear of the notch with
+         env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#3b1f6b" />
+    <!-- Installed-app behaviour on phones and tablets: iOS home-screen apps
+         need the apple- tags (they ignore the manifest for these), Chrome on
+         Android reads the mobile-web-app-capable one. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Bus Wankers" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="description"
+      content="Bus Wankers Autofill Downloads"
+    />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Bus Wankers Autofill Downloads</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

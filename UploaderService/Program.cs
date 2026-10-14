@@ -1,3 +1,5 @@
+using Autofills.Common;
+using Autofills.UploaderService;
 using IFGlobal.WebServices;
 
 // =============================================================================
@@ -16,15 +18,27 @@ using IFGlobal.WebServices;
 //     block is gone from appsettings.json.
 //   - IFLogger ships this service's logs to LoggerWebService like every other
 //     estate web service (UseIFLogger = true) - no manual wiring needed here.
-//   - UseAuthentication is false: this service isn't gated by Keycloak - its
-//     own protection is the shared upload password checked in the autofill
-//     controller (see UploadPassword in appsettings.json), unchanged from
-//     before. ServiceFactory still runs its ConfigWebService/Keycloak
-//     bootstrap dance regardless of that flag (it needs an authenticated
+//   - UseAuthentication is true (2026-09-29): EVERY endpoint (POST /sheets,
+//     /generate, /ingest and the GETs /files, /files/{name},
+//     /files/{name}/groups, /running-order, /time) requires a Keycloak access
+//     token, via [Authorize] on the controllers, issued
+//     to a signed-in user of the BusWankers AppDomain's user client and
+//     validated by ServiceFactory's JwtBearer pipeline (issuer, lifetime and
+//     signing key checked; audience "account" or this domain's client). This
+//     replaces the old shared UploadPassword. Callers that can't sign in (the
+//     AutoFill Options extension's Remote Import URL, the bookmarklets' live
+//     groups fetch) therefore get 401. ServiceFactory still runs its ConfigWebService/Keycloak bootstrap
+//     for the service's own client regardless (it needs an authenticated
 //     HttpClient to ship logs to LoggerWebService) - see appsettings.json's
 //     "IF" section for the AppDomain this authenticates against, and
 //     deploy-buswankers-backend.sh's preflight for what has to be provisioned
 //     first.
+//   - The "Uploaders" policy (2026-09-29, see UploaderAuthorization.cs) is
+//     registered through ConfigureServices below: POST /ingest, /sheets and
+//     /generate additionally require membership of the Keycloak group
+//     "uploaders" (403 for any other signed-in user). Group membership is read
+//     from the token's "groups" claim, so the BusWankers user client needs a
+//     Group Membership mapper that adds it to the access token.
 //   - ClientSecretEnvVar is overridden to BUSWANKERS_CLIENTSECRET: BusWankers
 //     gets its own AppDomain/Keycloak client (like RozeBowl and BreakTackle
 //     each have their own), so its secret lives under its own name in
@@ -63,10 +77,38 @@ var app = await ServiceFactory.CreateAsync(new ServiceFactoryOptions
 {
     ServiceName = "UploaderService",
     Description = "BusWankersSharp spreadsheet -> autofill-file generation",
-    UseAuthentication = false,
+    UseAuthentication = true,
     UseIFLogger = true,
     ClientSecretEnvVar = "BUSWANKERS_CLIENTSECRET",
-    SharedEstateService = true
+    SharedEstateService = true,
+    ConfigureServices = (services, context) =>
+    {
+        services.AddUploadersAuthorisation(context.Configuration);
+
+        // One log line per request, from the OUTERMOST position in the pipeline
+        // so 401s/403s answered by the auth middlewares are recorded too - see
+        // RequestLoggingMiddleware.cs for why a ConfigurePipeline hook is too late.
+        services.AddSingleton<IStartupFilter, RequestLoggingStartupFilter>();
+    }
 });
+
+// Start-up and process-level logging. The category begins with "Autofills", so
+// the IFLogger:CategoryOverrides entry in appsettings.json governs it like the rest.
+var startupLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Autofills.UploaderService.Startup");
+
+var storeDirectory = AutofillStore.ResolveDirectory(app.Configuration);
+var configuredGroup = GroupMembership.Normalise(app.Configuration[UploaderAuthorization.GroupSettingKey]);
+StartupLog.ServiceReady(startupLog, app.Environment.EnvironmentName, storeDirectory,
+    Directory.Exists(storeDirectory),
+    configuredGroup.Length > 0 ? configuredGroup : UploaderAuthorization.DefaultGroup);
+
+// Anything that dies off the request path (a background thread, a faulted task
+// nobody awaited) would otherwise vanish, or surface only in the journal.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    if (e.ExceptionObject is Exception unhandled)
+        StartupLog.UnhandledException(startupLog, unhandled, e.IsTerminating);
+};
+TaskScheduler.UnobservedTaskException += (_, e) => StartupLog.UnobservedTaskException(startupLog, e.Exception);
 
 app.Run();
